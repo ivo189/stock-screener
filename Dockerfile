@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install Node.js
+# Install Node.js and curl
 RUN apt-get update && apt-get install -y curl && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
@@ -18,14 +18,20 @@ RUN npm --prefix frontend install
 COPY frontend/ frontend/
 RUN npm --prefix frontend run build
 
-# Setup backend
+# Setup backend dependencies
 COPY backend/pyproject.toml backend/uv.lock backend/
 RUN uv sync --project backend
+
+# Copy all backend source
 COPY backend/ backend/
 
-# Copy built frontend to backend/static
+# Copy built frontend into backend/static
 RUN cp -r frontend/dist backend/static
 
 EXPOSE 8000
 
-CMD uv run --project backend uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --app-dir backend
+WORKDIR /app/backend
+
+ENV PORT=8000
+
+CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
