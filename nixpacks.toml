@@ -1,0 +1,18 @@
+[phases.setup]
+nixPkgs = ["python311", "nodejs_22", "nodePackages.npm"]
+
+[phases.install]
+cmds = [
+  "pip install uv",
+  "cd frontend && npm install",
+  "cd backend && uv sync"
+]
+
+[phases.build]
+cmds = [
+  "cd frontend && npm run build",
+  "cp -r frontend/dist backend/static"
+]
+
+[start]
+cmd = "cd backend && uv run uvicorn main:app --host 0.0.0.0 --port $PORT"

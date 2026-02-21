@@ -1,0 +1,20 @@
+# Python
+backend/.venv/
+backend/cache/*.json
+backend/cache/*.tmp
+backend/static/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+*.DS_Store
+
+# Env
+.env
+.env.local
