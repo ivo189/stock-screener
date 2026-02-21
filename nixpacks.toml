@@ -1,9 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "nodejs", "nodePackages.npm"]
+nixPkgs = ["python311", "nodejs", "nodePackages.npm", "uv"]
 
 [phases.install]
 cmds = [
-  "pip install uv",
   "npm --prefix frontend install",
   "uv sync --project backend"
 ]
