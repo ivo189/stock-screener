@@ -119,6 +119,7 @@ def apply_filters(
             quality_score=quality,
             passes_filter=passes,
             last_updated=stock.last_updated,
+            weekly_prices=stock.weekly_prices[-26:],  # last 26 weeks for mini chart
         )
         results.append(summary)
 

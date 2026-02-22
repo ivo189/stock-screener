@@ -53,6 +53,7 @@ export interface StockSummary {
   quality_score: number | null;
   passes_filter: boolean;
   last_updated: string | null;
+  weekly_prices: WeeklyPrice[];
 }
 
 export interface ScreenerFilters {

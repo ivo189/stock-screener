@@ -31,8 +31,15 @@ export default function ScreenerPage() {
     return showOnlyPassing ? data.results.filter((s) => s.passes_filter) : data.results;
   }, [data, showOnlyPassing]);
 
-  // Build weekly price map from any cached data (via screener results that include it)
-  const weeklyPrices: Record<string, WeeklyPrice[]> = {};
+  // Build weekly price map from screener results
+  const weeklyPrices: Record<string, WeeklyPrice[]> = useMemo(() => {
+    if (!data) return {};
+    return Object.fromEntries(
+      data.results
+        .filter((s) => s.weekly_prices && s.weekly_prices.length > 0)
+        .map((s) => [s.ticker, s.weekly_prices])
+    );
+  }, [data]);
 
   const passCount = data?.passed_count ?? 0;
   const totalCount = data?.total_universe_count ?? 0;

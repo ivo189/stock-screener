@@ -74,3 +74,4 @@ class StockSummary(BaseModel):
     quality_score: Optional[float] = None
     passes_filter: bool = False
     last_updated: Optional[datetime] = None
+    weekly_prices: list[WeeklyPrice] = []  # last 26 weeks for mini chart
