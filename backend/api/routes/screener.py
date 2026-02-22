@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -48,6 +48,19 @@ async def run_screener(
     )
 
 
+def _get_next_refresh_utc() -> datetime:
+    """Calculate the next scheduled refresh time (22:30 UTC, Mon-Fri)."""
+    from config import REFRESH_HOUR_UTC, REFRESH_MINUTE_UTC
+    now = datetime.utcnow()
+    target = now.replace(hour=REFRESH_HOUR_UTC, minute=REFRESH_MINUTE_UTC, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    # Skip weekends (5=Sat, 6=Sun)
+    while target.weekday() >= 5:
+        target += timedelta(days=1)
+    return target
+
+
 @router.get("/universe")
 async def get_universe_stats():
     stocks = stock_cache.get_all()
@@ -56,12 +69,16 @@ async def get_universe_stats():
         sec = s.sector or "Unknown"
         sectors[sec] = sectors.get(sec, 0) + 1
 
+    last_updated = stock_cache._last_batch_update
+
     return {
         "total_tickers": len(stocks),
         "sectors": sectors,
         "cache_age_seconds": stock_cache.cache_age_seconds(),
         "is_stale": stock_cache.is_stale(),
         "refresh_running": is_refresh_running(),
+        "last_updated_at": last_updated.isoformat() if last_updated else None,
+        "next_refresh_at": _get_next_refresh_utc().isoformat(),
     }
 
 

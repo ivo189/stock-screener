@@ -122,6 +122,8 @@ export interface UniverseStats {
   cache_age_seconds: number | null;
   is_stale: boolean;
   refresh_running: boolean;
+  last_updated_at: string | null;
+  next_refresh_at: string;
 }
 
 export interface MonteCarloSummary {
