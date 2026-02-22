@@ -3,9 +3,10 @@ import { X, BarChart3, AlertTriangle } from 'lucide-react';
 import { useScreenerStore } from '../../store/screenerStore';
 import { usePortfolio } from '../../hooks/usePortfolio';
 import AllocationChart from './AllocationChart';
+import MonteCarloChart from './MonteCarloChart';
 import { formatCurrency, formatNumber, formatPercent } from '../../utils/formatters';
 import { getSectorColor } from '../../utils/colorScale';
-import type { WeightingMethod } from '../../types';
+import type { WeightingMethod, PortfolioRequest } from '../../types';
 
 const METHODS: { value: WeightingMethod; label: string; desc: string }[] = [
   { value: 'risk_parity', label: 'Risk Parity', desc: 'Inverse volatility weighting' },
@@ -22,15 +23,18 @@ export default function PortfolioBuilder({ onClose }: Props) {
     useScreenerStore();
   const { mutate, isPending, result } = usePortfolio();
   const [localCapital, setLocalCapital] = useState<string>(capital ? String(capital) : '');
+  const [mcRequest, setMcRequest] = useState<PortfolioRequest | null>(null);
 
   const handleBuild = () => {
     const cap = localCapital ? parseFloat(localCapital) : undefined;
     setCapital(cap);
-    mutate({
+    const req: PortfolioRequest = {
       tickers: selectedTickers,
       total_capital: cap,
       weighting_method: weightingMethod,
-    });
+    };
+    mutate(req);
+    setMcRequest(req);
   };
 
   return (
@@ -203,6 +207,9 @@ export default function PortfolioBuilder({ onClose }: Props) {
                   </tbody>
                 </table>
               </div>
+
+              {/* Monte Carlo Simulation */}
+              {mcRequest && <MonteCarloChart request={mcRequest} />}
             </div>
           )}
         </div>

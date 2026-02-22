@@ -19,6 +19,8 @@ async def run_screener(
     min_eps_cagr_5y: float = Query(default=5.0),
     min_dividend_yield: float = Query(default=2.0, ge=0),
     require_both: bool = Query(default=False),
+    max_pct_vs_ma200d: Optional[float] = Query(default=None),
+    max_pct_vs_ma30w: Optional[float] = Query(default=None),
 ):
     stocks = stock_cache.get_all()
 
@@ -29,6 +31,8 @@ async def run_screener(
         min_eps_cagr_5y=min_eps_cagr_5y,
         min_dividend_yield=min_dividend_yield,
         require_both_income_filters=require_both,
+        max_pct_vs_ma200d=max_pct_vs_ma200d,
+        max_pct_vs_ma30w=max_pct_vs_ma30w,
     )
 
     results = apply_filters(stocks, filters)

@@ -6,7 +6,7 @@ from typing import Optional
 
 import pandas as pd
 
-from config import CACHE_DIR, DJIA_TICKERS, SP500_FALLBACK, SP500_LIST_CACHE_DAYS
+from config import CACHE_DIR, DJIA_TICKERS, NDX_TICKERS, SP500_FALLBACK, SP500_LIST_CACHE_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -63,4 +63,6 @@ def get_full_universe(indices: list[str]) -> list[str]:
         tickers.update(get_sp500_tickers())
     if "DJIA" in indices:
         tickers.update(DJIA_TICKERS)
+    if "NDX" in indices:
+        tickers.update(NDX_TICKERS)
     return sorted(tickers)

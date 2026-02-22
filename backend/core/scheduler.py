@@ -3,7 +3,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from config import REFRESH_HOUR_UTC, REFRESH_MINUTE_UTC, DJIA_TICKERS
+from config import REFRESH_HOUR_UTC, REFRESH_MINUTE_UTC, DJIA_TICKERS, NDX_TICKERS
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,9 @@ async def run_full_refresh():
         from services.data_fetcher import batch_fetch_universe
 
         logger.info("Starting daily data refresh...")
-        tickers = get_full_universe(["SP500", "DJIA"])
+        tickers = get_full_universe(["SP500", "DJIA", "NDX"])
         djia_set = set(DJIA_TICKERS)
+        ndx_set = set(NDX_TICKERS)
 
         def progress(done, total):
             if done % 50 == 0 or done == total:
@@ -33,13 +34,14 @@ async def run_full_refresh():
 
         stocks = batch_fetch_universe(tickers, djia_set, progress_callback=progress)
 
-        # Fix index membership (SP500 vs DJIA)
+        # Fix index membership
         for s in stocks:
             membership = []
             if s.ticker in djia_set:
                 membership.append("DJIA")
-            # All tickers in our universe are considered SP500 if not exclusively DJIA
-            membership.append("SP500")
+            if s.ticker in ndx_set:
+                membership.append("NDX")
+            membership.append("SP500")  # all tickers treated as SP500 universe
             s.index_membership = list(set(membership))
 
         stock_cache.set_batch(stocks)

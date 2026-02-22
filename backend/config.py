@@ -37,6 +37,20 @@ DJIA_TICKERS = [
     "MRK", "MSFT", "NKE", "PG", "SHW", "TRV", "UNH", "V", "VZ", "WMT",
 ]
 
+# Nasdaq 100 tickers (as of early 2026)
+NDX_TICKERS = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "GOOG", "AVGO", "COST",
+    "NFLX", "TMUS", "ASML", "AMD", "PEP", "LIN", "CSCO", "ADBE", "TXN", "QCOM",
+    "INTU", "AMGN", "ISRG", "BKNG", "AMAT", "HON", "VRTX", "MU", "ADP", "PANW",
+    "GILD", "ADI", "SBUX", "MELI", "LRCX", "INTC", "MDLZ", "CTAS", "KLAC", "CEG",
+    "REGN", "PYPL", "CRWD", "SNPS", "CDNS", "MAR", "ORLY", "MNST", "FTNT", "MRVL",
+    "CSX", "PCAR", "ABNB", "WDAY", "ADSK", "NXPI", "CHTR", "PAYX", "MCHP", "ROST",
+    "CPRT", "KDP", "AEP", "FAST", "IDXX", "DDOG", "TEAM", "ODFL", "VRSK", "TTD",
+    "EA", "BKR", "GEHC", "EXC", "CTSH", "FANG", "XEL", "ON", "GFS", "BIIB",
+    "DLTR", "KHC", "WBD", "SIRI", "ZS", "ANSS", "ILMN", "SPLK", "ALGN", "ENPH",
+    "LCID", "RIVN", "DXCM", "WBA", "CCEP", "CDW", "SMCI", "ARM", "DASH", "APP",
+]
+
 # Fallback S&P 500 large-cap subset (used if Wikipedia fetch fails)
 SP500_FALLBACK = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG", "BRK-B", "LLY", "AVGO",

@@ -8,6 +8,11 @@ export interface FilterState {
   min_eps_cagr_5y: number;
   min_dividend_yield: number;
   require_both: boolean;
+  // Moving average filters (null = disabled)
+  enable_ma200d: boolean;
+  max_pct_vs_ma200d: number;   // e.g. -10 means must be ≥10% below MA200
+  enable_ma30w: boolean;
+  max_pct_vs_ma30w: number;
 }
 
 const DEFAULT_FILTERS: FilterState = {
@@ -17,6 +22,10 @@ const DEFAULT_FILTERS: FilterState = {
   min_eps_cagr_5y: 5,
   min_dividend_yield: 2,
   require_both: false,
+  enable_ma200d: false,
+  max_pct_vs_ma200d: -5,
+  enable_ma30w: false,
+  max_pct_vs_ma30w: -5,
 };
 
 interface ScreenerStore {

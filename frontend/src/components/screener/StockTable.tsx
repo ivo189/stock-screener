@@ -2,7 +2,7 @@ import { ChevronUp, ChevronDown, Plus, Check } from 'lucide-react';
 import type { StockSummary, SortColumn } from '../../types';
 import { useScreenerStore } from '../../store/screenerStore';
 import { formatCurrency, formatPercent, formatNumber, formatMarketCap } from '../../utils/formatters';
-import { peColor, cagColor, divColor, proximityColor, qualityBg } from '../../utils/colorScale';
+import { peColor, cagColor, divColor, proximityColor, qualityBg, maColor } from '../../utils/colorScale';
 import MiniChart from './MiniChart';
 import { useState } from 'react';
 import StockDetailDrawer from './StockDetailDrawer';
@@ -19,6 +19,8 @@ const COLUMNS: Col[] = [
   { key: 'sector', label: 'Sector', width: 'w-36' },
   { key: 'current_price', label: 'Price' },
   { key: 'pct_above_52w_low', label: '% vs 52w Low' },
+  { key: 'pct_vs_ma200d', label: '% vs MA200d' },
+  { key: 'pct_vs_ma30w', label: '% vs MA30w' },
   { key: 'trailing_pe', label: 'P/E' },
   { key: 'eps_cagr_5y', label: 'EPS CAGR' },
   { key: 'dividend_yield', label: 'Div Yield' },
@@ -143,6 +145,12 @@ export default function StockTable({ stocks, weeklyPrices = {} }: Props) {
                   </td>
                   <td className={`px-3 py-2 font-mono ${proximityColor(stock.pct_above_52w_low)}`}>
                     {stock.pct_above_52w_low != null ? `+${stock.pct_above_52w_low.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className={`px-3 py-2 font-mono ${maColor(stock.pct_vs_ma200d)}`}>
+                    {stock.pct_vs_ma200d != null ? `${stock.pct_vs_ma200d > 0 ? '+' : ''}${stock.pct_vs_ma200d.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className={`px-3 py-2 font-mono ${maColor(stock.pct_vs_ma30w)}`}>
+                    {stock.pct_vs_ma30w != null ? `${stock.pct_vs_ma30w > 0 ? '+' : ''}${stock.pct_vs_ma30w.toFixed(1)}%` : '—'}
                   </td>
                   <td className={`px-3 py-2 font-mono ${peColor(stock.trailing_pe)}`}>
                     {formatNumber(stock.trailing_pe, 1)}x

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: stock-screener-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ALLOWED_ORIGINS
+        value: https://stock-screener.vercel.app,http://localhost:5173
+    disk:
+      name: cache-disk
+      mountPath: /opt/render/project/src/cache
+      sizeGB: 1

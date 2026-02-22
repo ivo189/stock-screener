@@ -53,6 +53,16 @@ def _passes_filter(stock: StockMetrics, filters: ScreenerFilters) -> bool:
     if stock.pct_above_52w_low > filters.max_pct_above_52w_low:
         return False
 
+    # Optional: MA200d filter
+    if filters.max_pct_vs_ma200d is not None and stock.pct_vs_ma200d is not None:
+        if stock.pct_vs_ma200d > filters.max_pct_vs_ma200d:
+            return False
+
+    # Optional: MA30w filter
+    if filters.max_pct_vs_ma30w is not None and stock.pct_vs_ma30w is not None:
+        if stock.pct_vs_ma30w > filters.max_pct_vs_ma30w:
+            return False
+
     # 2. Low P/E
     if stock.trailing_pe is None or stock.trailing_pe <= 0:
         return False
@@ -101,6 +111,10 @@ def apply_filters(
             market_cap=stock.market_cap,
             price_52w_low=stock.price_52w_low,
             price_52w_high=stock.price_52w_high,
+            ma_200d=stock.ma_200d,
+            ma_30w=stock.ma_30w,
+            pct_vs_ma200d=stock.pct_vs_ma200d,
+            pct_vs_ma30w=stock.pct_vs_ma30w,
             data_quality_score=stock.data_quality_score,
             quality_score=quality,
             passes_filter=passes,

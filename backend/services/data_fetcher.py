@@ -126,9 +126,20 @@ def fetch_stock_metrics(ticker: str, djia_set: set) -> StockMetrics:
         metrics.forward_pe = _safe_float(info.get("forwardPE"))
         metrics.market_cap = _safe_float(info.get("marketCap"))
 
-        div_yield = _safe_float(info.get("dividendYield"))
-        if div_yield is not None:
-            metrics.dividend_yield = round(div_yield * 100, 3)
+        # Forward dividend yield preferred over trailing.
+        # yfinance returns these as decimals (e.g. 0.0142 = 1.42%) in most versions,
+        # but some versions / tickers return them already as percentages (e.g. 1.42).
+        # Guard: if raw value > 0.20 it's already a percentage — don't multiply.
+        fwd_div = _safe_float(info.get("dividendYield"))
+        trail_div = _safe_float(info.get("trailingAnnualDividendYield"))
+        div_yield_raw = fwd_div if fwd_div is not None else trail_div
+        if div_yield_raw is not None and div_yield_raw > 0:
+            if div_yield_raw > 0.20:
+                # Already expressed as a percentage (e.g. 1.42 meaning 1.42%)
+                metrics.dividend_yield = round(div_yield_raw, 3)
+            else:
+                # Decimal form (e.g. 0.0142) — convert to percentage
+                metrics.dividend_yield = round(div_yield_raw * 100, 3)
             quality_fields += 1
         else:
             metrics.dividend_yield = 0.0
@@ -169,8 +180,33 @@ def fetch_stock_metrics(ticker: str, djia_set: set) -> StockMetrics:
                         (metrics.current_price - metrics.price_52w_low) / metrics.price_52w_low * 100, 2
                     )
                     quality_fields = max(quality_fields, 2)  # ensure counted
+
+                # --- Moving averages ---
+                # MA30w: 30-week SMA from weekly data
+                if len(closes) >= 10:
+                    ma30w_val = closes.iloc[-30:].mean() if len(closes) >= 30 else closes.mean()
+                    metrics.ma_30w = round(float(ma30w_val), 4)
+                    if metrics.current_price and metrics.ma_30w > 0:
+                        metrics.pct_vs_ma30w = round(
+                            (metrics.current_price - metrics.ma_30w) / metrics.ma_30w * 100, 2
+                        )
         except Exception as e:
             logger.warning(f"{ticker}: price history failed: {e}")
+
+        # --- Daily history for MA200d ---
+        try:
+            daily = t.history(period="1y", interval="1d")
+            if not daily.empty and "Close" in daily.columns:
+                daily_closes = daily["Close"].dropna()
+                if len(daily_closes) >= 20:
+                    ma200_val = daily_closes.iloc[-200:].mean() if len(daily_closes) >= 200 else daily_closes.mean()
+                    metrics.ma_200d = round(float(ma200_val), 4)
+                    if metrics.current_price and metrics.ma_200d > 0:
+                        metrics.pct_vs_ma200d = round(
+                            (metrics.current_price - metrics.ma_200d) / metrics.ma_200d * 100, 2
+                        )
+        except Exception as e:
+            logger.warning(f"{ticker}: daily history for MA200 failed: {e}")
 
         # --- Index membership ---
         membership = []

@@ -61,8 +61,8 @@ export default function FilterPanel({ passCount, totalCount }: { passCount: numb
       {/* Universe toggles */}
       <div className="mb-4">
         <p className="text-xs text-slate-300 font-medium mb-2">Universe</p>
-        <div className="flex gap-2">
-          {['SP500', 'DJIA'].map((idx) => (
+        <div className="flex gap-2 flex-wrap">
+          {['SP500', 'DJIA', 'NDX'].map((idx) => (
             <button
               key={idx}
               onClick={() => toggleUniverse(idx)}
@@ -133,6 +133,60 @@ export default function FilterPanel({ passCount, totalCount }: { passCount: numb
           Require BOTH (AND instead of OR)
         </label>
       </div>
+
+      <div className="border-t border-slate-700 my-2" />
+      <p className="text-xs text-slate-400 font-medium">Moving Average filters</p>
+      <p className="text-xs text-slate-500 -mt-1">Negativo = precio por debajo de la MA</p>
+
+      {/* MA200d */}
+      <div className="flex items-center gap-2 mb-1">
+        <input
+          type="checkbox"
+          id="enable-ma200d"
+          checked={filters.enable_ma200d}
+          onChange={(e) => updateFilter('enable_ma200d', e.target.checked)}
+          className="accent-indigo-500"
+        />
+        <label htmlFor="enable-ma200d" className="text-xs text-slate-300">
+          Filtrar por MA 200 días
+        </label>
+      </div>
+      {filters.enable_ma200d && (
+        <Slider
+          label="Máx % vs MA200d"
+          value={filters.max_pct_vs_ma200d}
+          min={-50}
+          max={0}
+          step={1}
+          unit="%"
+          onChange={(v) => updateFilter('max_pct_vs_ma200d', v)}
+        />
+      )}
+
+      {/* MA30w */}
+      <div className="flex items-center gap-2 mb-1">
+        <input
+          type="checkbox"
+          id="enable-ma30w"
+          checked={filters.enable_ma30w}
+          onChange={(e) => updateFilter('enable_ma30w', e.target.checked)}
+          className="accent-indigo-500"
+        />
+        <label htmlFor="enable-ma30w" className="text-xs text-slate-300">
+          Filtrar por MA 30 semanas
+        </label>
+      </div>
+      {filters.enable_ma30w && (
+        <Slider
+          label="Máx % vs MA30w"
+          value={filters.max_pct_vs_ma30w}
+          min={-50}
+          max={0}
+          step={1}
+          unit="%"
+          onChange={(v) => updateFilter('max_pct_vs_ma30w', v)}
+        />
+      )}
 
       <div className="border-t border-slate-700 my-2" />
 

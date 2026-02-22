@@ -34,6 +34,17 @@ export function proximityColor(pct: number | null): string {
   return 'text-slate-400';
 }
 
+// MA distance color: negative (below MA) = bullish opportunity = green
+export function maColor(pct: number | null): string {
+  if (pct == null) return 'text-slate-400';
+  if (pct <= -20) return 'text-emerald-400 font-semibold'; // very far below MA
+  if (pct <= -10) return 'text-green-400';
+  if (pct <= -5)  return 'text-yellow-400';
+  if (pct <= 0)   return 'text-orange-300';
+  if (pct <= 10)  return 'text-slate-300';
+  return 'text-slate-500'; // far above MA
+}
+
 export function qualityBg(score: number | null): string {
   if (score == null) return 'bg-slate-700';
   if (score >= 70) return 'bg-emerald-600';

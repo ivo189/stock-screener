@@ -20,6 +20,8 @@ export default function ScreenerPage() {
     min_eps_cagr_5y: filters.min_eps_cagr_5y,
     min_dividend_yield: filters.min_dividend_yield,
     require_both: filters.require_both,
+    max_pct_vs_ma200d: filters.enable_ma200d ? filters.max_pct_vs_ma200d : null,
+    max_pct_vs_ma30w: filters.enable_ma30w ? filters.max_pct_vs_ma30w : null,
   };
 
   const { data, isLoading, isError, error, isFetching } = useScreener(params);

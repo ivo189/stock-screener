@@ -12,6 +12,8 @@ class ScreenerFilters(BaseModel):
     min_eps_cagr_5y: float = Field(default=5.0)
     min_dividend_yield: float = Field(default=2.0, ge=0)
     require_both_income_filters: bool = False
+    max_pct_vs_ma200d: Optional[float] = Field(default=None)   # e.g. -10 means price must be >10% below MA200
+    max_pct_vs_ma30w: Optional[float] = Field(default=None)    # e.g. -5 means price must be >5% below MA30w
 
 
 class ScreenerResponse(BaseModel):

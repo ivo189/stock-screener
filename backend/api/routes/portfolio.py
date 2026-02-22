@@ -4,6 +4,7 @@ from typing import Optional
 from core.cache import stock_cache
 from models.portfolio import PortfolioRequest, PortfolioResponse
 from services.portfolio_service import build_portfolio
+from services.monte_carlo import run_monte_carlo, compute_portfolio_weekly_returns
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -63,4 +64,38 @@ async def preview_portfolio(
     result = build_portfolio(stocks, request)
     if missing:
         result.warnings.append(f"Tickers not found in cache (excluded): {', '.join(missing)}")
+    return result
+
+
+@router.post("/monte-carlo")
+async def portfolio_monte_carlo(request: PortfolioRequest, n_weeks: int = Query(default=52, ge=4, le=260)):
+    """Run Monte Carlo simulation on a portfolio built from screened stocks."""
+    if len(request.tickers) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 tickers required.")
+
+    stocks, missing = _get_stocks_for_tickers(request.tickers)
+    if not stocks:
+        raise HTTPException(status_code=404, detail="No tickers found in cache.")
+
+    # Build portfolio to get weights
+    portfolio = build_portfolio(stocks, request)
+
+    # Build positions with weekly price data
+    stock_map = {s.ticker: s for s in stocks}
+    positions_data = []
+    for pos in portfolio.positions:
+        s = stock_map.get(pos.ticker)
+        if s and s.weekly_prices:
+            positions_data.append({
+                "ticker": pos.ticker,
+                "weight": pos.target_weight,
+                "weekly_prices": [{"date": p.date, "close": p.close} for p in s.weekly_prices],
+            })
+
+    weekly_returns = compute_portfolio_weekly_returns(positions_data)
+
+    capital = request.total_capital or 10000.0
+    result = run_monte_carlo(weekly_returns, capital, n_weeks=n_weeks)
+    result["portfolio_positions"] = len(portfolio.positions)
+    result["missing_tickers"] = missing
     return result

@@ -8,6 +8,8 @@ export interface ScreenerParams {
   min_eps_cagr_5y?: number;
   min_dividend_yield?: number;
   require_both?: boolean;
+  max_pct_vs_ma200d?: number | null;
+  max_pct_vs_ma30w?: number | null;
 }
 
 export async function fetchScreenerResults(params: ScreenerParams): Promise<ScreenerResponse> {
@@ -23,6 +25,10 @@ export async function fetchScreenerResults(params: ScreenerParams): Promise<Scre
     searchParams.set('min_dividend_yield', String(params.min_dividend_yield));
   if (params.require_both !== undefined)
     searchParams.set('require_both', String(params.require_both));
+  if (params.max_pct_vs_ma200d != null)
+    searchParams.set('max_pct_vs_ma200d', String(params.max_pct_vs_ma200d));
+  if (params.max_pct_vs_ma30w != null)
+    searchParams.set('max_pct_vs_ma30w', String(params.max_pct_vs_ma30w));
 
   const res = await client.get<ScreenerResponse>(`/screener?${searchParams.toString()}`);
   return res.data;

@@ -13,6 +13,10 @@ export interface StockMetrics {
   price_52w_high: number | null;
   price_52w_low: number | null;
   pct_above_52w_low: number | null;
+  ma_200d: number | null;
+  ma_30w: number | null;
+  pct_vs_ma200d: number | null;
+  pct_vs_ma30w: number | null;
   trailing_pe: number | null;
   forward_pe: number | null;
   market_cap: number | null;
@@ -41,6 +45,10 @@ export interface StockSummary {
   market_cap: number | null;
   price_52w_low: number | null;
   price_52w_high: number | null;
+  ma_200d: number | null;
+  ma_30w: number | null;
+  pct_vs_ma200d: number | null;
+  pct_vs_ma30w: number | null;
   data_quality_score: number;
   quality_score: number | null;
   passes_filter: boolean;
@@ -113,6 +121,36 @@ export interface UniverseStats {
   cache_age_seconds: number | null;
   is_stale: boolean;
   refresh_running: boolean;
+}
+
+export interface MonteCarloSummary {
+  mean_final: number;
+  median_final: number;
+  p10_final: number;
+  p90_final: number;
+  prob_profit: number;
+  prob_loss_20pct: number;
+  annualized_return_median: number;
+  mu_weekly: number;
+  sigma_weekly: number;
+  n_simulations: number;
+  n_weeks: number;
+}
+
+export interface MonteCarloResult {
+  weeks: string[];
+  paths: {
+    p10: number[];
+    p25: number[];
+    p50: number[];
+    p75: number[];
+    p90: number[];
+  };
+  initial_capital: number;
+  summary: MonteCarloSummary;
+  portfolio_positions: number;
+  missing_tickers: string[];
+  error?: string;
 }
 
 export type SortDirection = 'asc' | 'desc';

@@ -21,13 +21,19 @@ class StockMetrics(BaseModel):
     price_52w_low: Optional[float] = None
     pct_above_52w_low: Optional[float] = None
 
+    # Moving averages
+    ma_200d: Optional[float] = None        # 200-day SMA
+    ma_30w: Optional[float] = None         # 30-week SMA
+    pct_vs_ma200d: Optional[float] = None  # % price vs MA200d (negative = below MA)
+    pct_vs_ma30w: Optional[float] = None   # % price vs MA30w
+
     # Valuation
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
     market_cap: Optional[float] = None
 
     # Income / yield
-    dividend_yield: Optional[float] = None  # percentage, e.g. 3.2
+    dividend_yield: Optional[float] = None  # forward dividend yield %, e.g. 3.2
     eps_ttm: Optional[float] = None
     eps_cagr_5y: Optional[float] = None  # percentage, e.g. 8.5
 
@@ -58,6 +64,10 @@ class StockSummary(BaseModel):
     market_cap: Optional[float] = None
     price_52w_low: Optional[float] = None
     price_52w_high: Optional[float] = None
+    ma_200d: Optional[float] = None
+    ma_30w: Optional[float] = None
+    pct_vs_ma200d: Optional[float] = None
+    pct_vs_ma30w: Optional[float] = None
     data_quality_score: float = 0.0
     quality_score: Optional[float] = None
     passes_filter: bool = False
