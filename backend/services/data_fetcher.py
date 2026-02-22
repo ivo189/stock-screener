@@ -156,11 +156,22 @@ def fetch_stock_metrics(ticker: str, djia_set: set) -> StockMetrics:
             if metrics.eps_cagr_5y is not None:
                 quality_fields += 1
 
-        # --- Weekly price history (1 year) ---
+        # --- Weekly price history (5 years for Monte Carlo, last 52w for chart) ---
         try:
-            hist = t.history(period="1y", interval="1wk")
-            if not hist.empty and "Close" in hist.columns:
-                closes = hist["Close"].dropna()
+            hist_5y = t.history(period="5y", interval="1wk")
+            if not hist_5y.empty and "Close" in hist_5y.columns:
+                closes_5y = hist_5y["Close"].dropna()
+                # Store full 5y history for Monte Carlo return estimation
+                metrics.weekly_prices_5y = [
+                    WeeklyPrice(date=str(idx.date()), close=round(float(v), 4))
+                    for idx, v in closes_5y.items()
+                ]
+                # Use only last 52 weeks for the 1y chart
+                closes = closes_5y.iloc[-52:] if len(closes_5y) >= 52 else closes_5y
+            else:
+                closes = pd.Series(dtype=float)
+
+            if not closes.empty:
                 metrics.price_volatility_1y = calculate_price_volatility(closes)
                 if metrics.price_volatility_1y:
                     quality_fields += 1

@@ -41,8 +41,10 @@ class StockMetrics(BaseModel):
     beta: Optional[float] = None
     price_volatility_1y: Optional[float] = None  # annualized
 
-    # History for charts
+    # History for charts (1 year, used for MiniChart)
     weekly_prices: list[WeeklyPrice] = []
+    # History for Monte Carlo (5 years, longer window for return estimation)
+    weekly_prices_5y: list[WeeklyPrice] = []
 
     # Meta
     last_updated: Optional[datetime] = None

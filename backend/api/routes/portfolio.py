@@ -85,12 +85,15 @@ async def portfolio_monte_carlo(request: PortfolioRequest, n_weeks: int = Query(
     positions_data = []
     for pos in portfolio.positions:
         s = stock_map.get(pos.ticker)
-        if s and s.weekly_prices:
-            positions_data.append({
-                "ticker": pos.ticker,
-                "weight": pos.target_weight,
-                "weekly_prices": [{"date": p.date, "close": p.close} for p in s.weekly_prices],
-            })
+        if s:
+            # Prefer 5y history for better return estimation; fall back to 1y
+            prices = s.weekly_prices_5y if s.weekly_prices_5y else s.weekly_prices
+            if prices:
+                positions_data.append({
+                    "ticker": pos.ticker,
+                    "weight": pos.target_weight,
+                    "weekly_prices": [{"date": p.date, "close": p.close} for p in prices],
+                })
 
     weekly_returns = compute_portfolio_weekly_returns(positions_data)
 
