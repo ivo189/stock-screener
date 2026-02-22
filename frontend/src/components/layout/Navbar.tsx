@@ -13,8 +13,8 @@ export default function Navbar() {
     <nav className="bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-2">
         <TrendingUp className="text-indigo-400" size={22} />
-        <span className="font-bold text-lg text-white tracking-tight">Stock Screener</span>
-        <span className="text-xs text-slate-400 ml-2 hidden sm:block">S&P 500 · DJIA</span>
+        <span className="font-bold text-lg text-white tracking-tight">Stock Screener de Ivo</span>
+        <span className="text-xs text-slate-400 ml-2 hidden sm:block">S&P 500 · DJIA · Nasdaq 100</span>
       </div>
 
       <div className="flex items-center gap-4">
