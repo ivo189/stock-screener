@@ -4,7 +4,7 @@ from typing import Optional
 from core.cache import stock_cache
 from models.portfolio import PortfolioRequest, PortfolioResponse
 from services.portfolio_service import build_portfolio
-from services.monte_carlo import run_monte_carlo, compute_portfolio_weekly_returns
+from services.monte_carlo import run_monte_carlo, run_bootstrap, compute_portfolio_weekly_returns
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -93,12 +93,23 @@ async def portfolio_monte_carlo(request: PortfolioRequest, n_weeks: int = Query(
                     "ticker": pos.ticker,
                     "weight": pos.target_weight,
                     "weekly_prices": [{"date": p.date, "close": p.close} for p in prices],
+                    "dividend_yield": s.dividend_yield or 0.0,  # annual %, e.g. 2.5
                 })
 
     weekly_returns = compute_portfolio_weekly_returns(positions_data)
 
     capital = request.total_capital or 10000.0
-    result = run_monte_carlo(weekly_returns, capital, n_weeks=n_weeks)
-    result["portfolio_positions"] = len(portfolio.positions)
-    result["missing_tickers"] = missing
-    return result
+    mc_result = run_monte_carlo(weekly_returns, capital, n_weeks=n_weeks)
+    bs_result = run_bootstrap(weekly_returns, capital, n_weeks=n_weeks)
+
+    return {
+        "monte_carlo": mc_result,
+        "bootstrap": bs_result,
+        "portfolio_positions": len(portfolio.positions),
+        "missing_tickers": missing,
+        # Keep top-level fields for backward compat (use MC as primary)
+        "weeks": mc_result.get("weeks", []),
+        "paths": mc_result.get("paths", {}),
+        "initial_capital": capital,
+        "summary": mc_result.get("summary", {}),
+    }

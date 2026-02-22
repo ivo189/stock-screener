@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, BarChart3, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, BarChart3, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useScreenerStore } from '../../store/screenerStore';
 import { usePortfolio } from '../../hooks/usePortfolio';
 import AllocationChart from './AllocationChart';
@@ -25,7 +25,7 @@ export default function PortfolioBuilder({ onClose }: Props) {
   const [localCapital, setLocalCapital] = useState<string>(capital ? String(capital) : '');
   const [mcRequest, setMcRequest] = useState<PortfolioRequest | null>(null);
 
-  const handleBuild = () => {
+  const buildPortfolio = useCallback(() => {
     const cap = localCapital ? parseFloat(localCapital) : undefined;
     setCapital(cap);
     const req: PortfolioRequest = {
@@ -35,7 +35,15 @@ export default function PortfolioBuilder({ onClose }: Props) {
     };
     mutate(req);
     setMcRequest(req);
-  };
+  }, [localCapital, selectedTickers, weightingMethod, mutate, setCapital]);
+
+  // Auto-build on open
+  useEffect(() => {
+    if (selectedTickers.length >= 2) {
+      buildPortfolio();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
@@ -48,7 +56,10 @@ export default function PortfolioBuilder({ onClose }: Props) {
           <div className="flex items-center gap-2">
             <BarChart3 className="text-indigo-400" size={20} />
             <h2 className="text-lg font-bold text-white">Portfolio Builder</h2>
-            <span className="text-sm text-slate-400">({selectedTickers.length} stocks selected)</span>
+            <span className="text-sm text-slate-400">({selectedTickers.length} stocks)</span>
+            {isPending && (
+              <span className="text-xs text-indigo-300 animate-pulse ml-1">Calculando...</span>
+            )}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X size={20} />
@@ -56,7 +67,7 @@ export default function PortfolioBuilder({ onClose }: Props) {
         </div>
 
         <div className="p-6">
-          {/* Configuration */}
+          {/* Configuration + Rebuild */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="text-xs text-slate-400 font-medium block mb-2">
@@ -91,13 +102,23 @@ export default function PortfolioBuilder({ onClose }: Props) {
             </div>
           </div>
 
-          {/* Selected tickers */}
+          {/* Selected tickers + Recalculate button */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-slate-400 font-medium">Selected stocks</p>
-              <button onClick={clearSelection} className="text-xs text-red-400 hover:text-red-300">
-                Clear all
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={buildPortfolio}
+                  disabled={selectedTickers.length < 2 || isPending}
+                  className="flex items-center gap-1 text-xs px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+                >
+                  <RefreshCw size={11} className={isPending ? 'animate-spin' : ''} />
+                  Recalcular
+                </button>
+                <button onClick={clearSelection} className="text-xs text-red-400 hover:text-red-300">
+                  Clear all
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {selectedTickers.map((t) => (
@@ -107,14 +128,6 @@ export default function PortfolioBuilder({ onClose }: Props) {
               ))}
             </div>
           </div>
-
-          <button
-            onClick={handleBuild}
-            disabled={selectedTickers.length < 2 || isPending}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors mb-6"
-          >
-            {isPending ? 'Building...' : 'Build Portfolio'}
-          </button>
 
           {/* Results */}
           {result && (

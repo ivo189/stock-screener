@@ -137,20 +137,24 @@ export interface MonteCarloSummary {
   n_weeks: number;
 }
 
+export interface SimulationResult {
+  weeks: string[];
+  paths: { p10: number[]; p25: number[]; p50: number[]; p75: number[]; p90: number[] };
+  initial_capital: number;
+  summary: MonteCarloSummary;
+  error?: string;
+}
+
 export interface MonteCarloResult {
   weeks: string[];
-  paths: {
-    p10: number[];
-    p25: number[];
-    p50: number[];
-    p75: number[];
-    p90: number[];
-  };
+  paths: { p10: number[]; p25: number[]; p50: number[]; p75: number[]; p90: number[] };
   initial_capital: number;
   summary: MonteCarloSummary;
   portfolio_positions: number;
   missing_tickers: string[];
   error?: string;
+  monte_carlo?: SimulationResult;
+  bootstrap?: SimulationResult;
 }
 
 export type SortDirection = 'asc' | 'desc';
