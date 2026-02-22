@@ -9,7 +9,7 @@ const BASE_URL = import.meta.env.VITE_API_URL
 const client = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
+  timeout: 60000,
 });
 
 client.interceptors.response.use(

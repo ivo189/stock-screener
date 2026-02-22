@@ -1,16 +1,22 @@
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { useUniverseStats, useRefreshTrigger } from '../../hooks/useScreener';
 
-function formatLocalDateTime(isoUtc: string): string {
-  // The backend returns UTC without 'Z', so we append it for correct parsing
-  const d = new Date(isoUtc.endsWith('Z') ? isoUtc : isoUtc + 'Z');
-  return d.toLocaleString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+function formatLocalDateTime(isoUtc: string | null | undefined): string {
+  if (!isoUtc) return '—';
+  try {
+    // The backend returns UTC without 'Z', so we append it for correct parsing
+    const d = new Date(isoUtc.endsWith('Z') ? isoUtc : isoUtc + 'Z');
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return '—';
+  }
 }
 
 export default function Navbar() {
