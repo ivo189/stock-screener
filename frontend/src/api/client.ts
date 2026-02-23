@@ -9,7 +9,7 @@ const BASE_URL = import.meta.env.VITE_API_URL
 const client = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 60000,
+  timeout: 180000, // 3 min — Render free tier cold start can take up to 2 min
 });
 
 client.interceptors.response.use(
