@@ -35,6 +35,7 @@ from models.bond_models import (
     BondHistoryResponse,
 )
 from services.iol_client import get_cotizacion_detalle, place_order
+import services.github_storage as github_storage
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,7 @@ class BondMonitor:
         self._refresh_running: bool = False
         self._iol_authenticated: bool = False
         self._eod_signal: bool = False
+        self._save_counter: dict[str, int] = {}  # cadencia de push a GitHub
 
     # ------------------------------------------------------------------
     # EOD signal (smart: hold if spread persists, close if converged)
@@ -206,23 +208,50 @@ class BondMonitor:
         return BONDS_CACHE_DIR / f"{pair_id}.json"
 
     def _load_history(self, pair_id: str) -> list[RatioSnapshot]:
+        # 1. Intentar leer del disco local
         path = self._history_file(pair_id)
-        if not path.exists():
-            return []
-        try:
-            raw = json.loads(path.read_text())
-            return [RatioSnapshot(**item) for item in raw]
-        except Exception as e:
-            logger.warning(f"Could not load bond history for {pair_id}: {e}")
-            return []
+        if path.exists():
+            try:
+                raw = json.loads(path.read_text())
+                if raw:
+                    return [RatioSnapshot(**item) for item in raw]
+            except Exception as e:
+                logger.warning(f"Could not load bond history from disk for {pair_id}: {e}")
+        # 2. Disco vacío o inexistente — intentar desde GitHub
+        filename = f"{pair_id}.json"
+        raw = github_storage.pull(filename)
+        if raw:
+            try:
+                history = [RatioSnapshot(**item) for item in raw]
+                # Persistir localmente para no volver a pedir a GitHub
+                self._write_to_disk(pair_id, history)
+                logger.info(f"Bond monitor: restored {len(history)} points for {pair_id} from GitHub")
+                return history
+            except Exception as e:
+                logger.warning(f"Could not parse GitHub history for {pair_id}: {e}")
+        return []
 
-    def _save_history(self, pair_id: str, history: list[RatioSnapshot]) -> None:
+    def _write_to_disk(self, pair_id: str, history: list[RatioSnapshot]) -> None:
+        """Escribe historial al disco local (síncrono, rápido)."""
         path = self._history_file(pair_id)
         try:
             data = [s.model_dump(mode="json") for s in history]
             path.write_text(json.dumps(data, default=str))
         except Exception as e:
-            logger.warning(f"Could not save bond history for {pair_id}: {e}")
+            logger.warning(f"Could not save bond history to disk for {pair_id}: {e}")
+
+    def _save_history(self, pair_id: str, history: list[RatioSnapshot]) -> None:
+        """Escribe al disco Y pushea a GitHub cada 4 refreshes (≈ cada hora)."""
+        data = [s.model_dump(mode="json") for s in history]
+        # Siempre guardar en disco
+        self._write_to_disk(pair_id, history)
+        # Push a GitHub cada 4 refreshes para no exceder límites de la API
+        self._save_counter[pair_id] = self._save_counter.get(pair_id, 0) + 1
+        if self._save_counter[pair_id] % 4 == 0:
+            filename = f"{pair_id}.json"
+            asyncio.create_task(
+                asyncio.to_thread(github_storage.push, filename, data)
+            )
 
     def warm_from_disk(self) -> None:
         for pair_id, state in self._pairs.items():
