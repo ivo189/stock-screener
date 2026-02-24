@@ -188,3 +188,68 @@ class OrderLogResponse(BaseModel):
     """List of executed orders, newest first."""
     entries: list[OrderLogEntry]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Paper trading — virtual positions and P&L log
+# ---------------------------------------------------------------------------
+
+class PaperTrade(BaseModel):
+    """
+    A virtual arbitrage round-trip recorded automatically when:
+      - OPEN:  abs(z_score) >= BOND_ALERT_Z_THRESHOLD
+      - CLOSE: abs(z_score) <= PAPER_CLOSE_Z_THRESHOLD (0.5σ)
+
+    P&L is computed on a fixed notional (PAPER_TRADE_NOTIONAL, default ARS 100.000).
+    gross_pnl_pct = |ratio_close - ratio_open| / ratio_open
+    net_pnl_pct   = gross_pnl_pct - roundtrip_commission
+    gross_pnl_ars = gross_pnl_pct * notional
+    net_pnl_ars   = net_pnl_pct   * notional
+    """
+    id: str                             # UUID
+    pair_id: str
+    pair_label: str
+
+    # Entry
+    opened_at: datetime
+    open_ratio: float
+    open_z_score: float
+    direction: str                      # "LOCAL_CHEAP" | "NY_CHEAP"
+
+    # Exit (None while trade is open)
+    closed_at: Optional[datetime] = None
+    close_ratio: Optional[float] = None
+    close_z_score: Optional[float] = None
+    close_reason: Optional[str] = None  # "convergence" | "eod_close" | "manual"
+
+    # P&L (populated on close)
+    notional_ars: float = 100_000.0
+    roundtrip_commission_pct: float = 0.005
+    gross_pnl_pct: Optional[float] = None
+    net_pnl_pct: Optional[float] = None
+    gross_pnl_ars: Optional[float] = None
+    net_pnl_ars: Optional[float] = None
+
+    # Status
+    status: str = "open"               # "open" | "closed"
+
+
+class PaperTradeStats(BaseModel):
+    """Aggregate stats over all closed paper trades."""
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    win_rate_pct: float
+    avg_gross_pnl_pct: float
+    avg_net_pnl_pct: float
+    total_gross_pnl_ars: float
+    total_net_pnl_ars: float
+    avg_duration_hours: float
+
+
+class PaperTradeResponse(BaseModel):
+    """Response for GET /api/bonds/paper-trades."""
+    open_trades: list[PaperTrade]
+    closed_trades: list[PaperTrade]     # newest first
+    stats: Optional[PaperTradeStats] = None
+    notional_ars: float = 100_000.0

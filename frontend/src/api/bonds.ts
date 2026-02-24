@@ -4,6 +4,7 @@ import type {
   BondHistoryResponse,
   BondOrderRequest,
   BondOrderResponse,
+  PaperTradeResponse,
 } from '../types/bonds';
 
 export async function fetchBondsStatus(): Promise<BondsStatusResponse> {
@@ -28,5 +29,10 @@ export async function fetchPairHistory(
 
 export async function placeBondOrder(req: BondOrderRequest): Promise<BondOrderResponse> {
   const res = await client.post<BondOrderResponse>('/bonds/order', req);
+  return res.data;
+}
+
+export async function fetchPaperTrades(limit = 100): Promise<PaperTradeResponse> {
+  const res = await client.get<PaperTradeResponse>('/bonds/paper-trades', { params: { limit } });
   return res.data;
 }

@@ -132,3 +132,51 @@ export interface OrderLogResponse {
   entries: OrderLogEntry[];
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Paper trading
+// ---------------------------------------------------------------------------
+
+export type PaperTradeStatus = 'open' | 'closed';
+export type PaperTradeDirection = 'LOCAL_CHEAP' | 'NY_CHEAP';
+export type PaperCloseReason = 'convergence' | 'eod_close' | 'manual';
+
+export interface PaperTrade {
+  id: string;
+  pair_id: string;
+  pair_label: string;
+  opened_at: string;
+  open_ratio: number;
+  open_z_score: number;
+  direction: PaperTradeDirection;
+  closed_at: string | null;
+  close_ratio: number | null;
+  close_z_score: number | null;
+  close_reason: PaperCloseReason | null;
+  notional_ars: number;
+  roundtrip_commission_pct: number;
+  gross_pnl_pct: number | null;
+  net_pnl_pct: number | null;
+  gross_pnl_ars: number | null;
+  net_pnl_ars: number | null;
+  status: PaperTradeStatus;
+}
+
+export interface PaperTradeStats {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate_pct: number;
+  avg_gross_pnl_pct: number;
+  avg_net_pnl_pct: number;
+  total_gross_pnl_ars: number;
+  total_net_pnl_ars: number;
+  avg_duration_hours: number;
+}
+
+export interface PaperTradeResponse {
+  open_trades: PaperTrade[];
+  closed_trades: PaperTrade[];
+  stats: PaperTradeStats | null;
+  notional_ars: number;
+}

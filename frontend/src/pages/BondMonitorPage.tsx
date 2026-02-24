@@ -21,6 +21,7 @@ import type { BondPairState } from '../types/bonds';
 import PairCard from '../components/bonds/PairCard';
 import AlertSummary from '../components/bonds/AlertSummary';
 import OrderPanel from '../components/bonds/OrderPanel';
+import PaperTradeLog from '../components/bonds/PaperTradeLog';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -269,6 +270,11 @@ export default function BondMonitorPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Paper trade log */}
+            <div className="bg-slate-800/50 rounded-lg px-4 py-4 border border-slate-700">
+              <PaperTradeLog />
             </div>
 
             {/* Legend */}

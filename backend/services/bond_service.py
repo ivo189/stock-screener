@@ -26,6 +26,9 @@ from models.bond_models import (
     CommissionInfo,
     OrderLogEntry,
     OrderLogResponse,
+    PaperTrade,
+    PaperTradeStats,
+    PaperTradeResponse,
     RatioSnapshot,
     RatioStats,
     BondsStatusResponse,
@@ -90,6 +93,12 @@ MAX_HISTORY_POINTS = 500
 # Commission parameters — configurable via .env
 # Total end-to-end round-trip cost (both legs combined), e.g. 0.005 = 0.5%
 ROUNDTRIP_COMMISSION = float(os.getenv("IOL_ROUNDTRIP_COMMISSION", "0.005"))
+
+# Paper trading parameters
+PAPER_CLOSE_Z_THRESHOLD = float(os.getenv("PAPER_CLOSE_Z_THRESHOLD", "0.5"))
+PAPER_TRADE_NOTIONAL = float(os.getenv("PAPER_TRADE_NOTIONAL", "100000.0"))
+PAPER_TRADES_FILE = BONDS_CACHE_DIR / "paper_trades.json"
+MAX_PAPER_TRADES = 500
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +172,7 @@ class BondMonitor:
             if active:
                 # Per-pair action based on current z-score
                 z = state.stats.z_score if state.stats else 0.0
+                ratio = state.latest.ratio if state.latest else 0.0
                 if abs(z) >= self.EOD_HOLD_Z_THRESHOLD:
                     state.eod_action = "hold"
                     logger.info(
@@ -173,6 +183,8 @@ class BondMonitor:
                     logger.info(
                         f"EOD [{state.config.id}]: spread converged (z={z:.2f}) — CLOSE position."
                     )
+                    # Auto-close any open paper trade for this pair
+                    close_open_paper_trades_eod(state.config.id, ratio, z)
             else:
                 state.eod_action = "none"
         if active:
@@ -303,6 +315,17 @@ class BondMonitor:
                 )
             else:
                 state.alert = None
+
+            # Paper trading: open/close virtual positions based on z-score
+            if stats:
+                direction = "LOCAL_CHEAP" if stats.z_score < 0 else "NY_CHEAP"
+                process_paper_trades(
+                    pair_id=pair.id,
+                    pair_label=pair.label,
+                    ratio=ratio,
+                    z_score=stats.z_score,
+                    direction=direction,
+                )
 
             self._save_history(pair.id, state.history)
             self._iol_authenticated = True
@@ -494,6 +517,171 @@ async def execute_order(req: BondOrderRequest) -> BondOrderResponse:
     ))
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Paper trading — persistence helpers
+# ---------------------------------------------------------------------------
+
+def _load_paper_trades() -> list[PaperTrade]:
+    if not PAPER_TRADES_FILE.exists():
+        return []
+    try:
+        raw = json.loads(PAPER_TRADES_FILE.read_text())
+        return [PaperTrade(**item) for item in raw]
+    except Exception as e:
+        logger.warning(f"Could not load paper trades: {e}")
+        return []
+
+
+def _save_paper_trades(trades: list[PaperTrade]) -> None:
+    trades = trades[-MAX_PAPER_TRADES:]
+    try:
+        data = [t.model_dump(mode="json") for t in trades]
+        PAPER_TRADES_FILE.write_text(json.dumps(data, default=str))
+    except Exception as e:
+        logger.warning(f"Could not save paper trades: {e}")
+
+
+def _compute_paper_stats(closed: list[PaperTrade]) -> Optional[PaperTradeStats]:
+    if not closed:
+        return None
+    winners = [t for t in closed if (t.net_pnl_pct or 0) > 0]
+    total_gross = sum(t.gross_pnl_ars or 0 for t in closed)
+    total_net = sum(t.net_pnl_ars or 0 for t in closed)
+    avg_gross = sum(t.gross_pnl_pct or 0 for t in closed) / len(closed)
+    avg_net = sum(t.net_pnl_pct or 0 for t in closed) / len(closed)
+
+    durations = []
+    for t in closed:
+        if t.closed_at and t.opened_at:
+            durations.append((t.closed_at - t.opened_at).total_seconds() / 3600)
+    avg_duration = sum(durations) / len(durations) if durations else 0.0
+
+    return PaperTradeStats(
+        total_trades=len(closed),
+        winning_trades=len(winners),
+        losing_trades=len(closed) - len(winners),
+        win_rate_pct=round(len(winners) / len(closed) * 100, 1),
+        avg_gross_pnl_pct=round(avg_gross * 100, 4),
+        avg_net_pnl_pct=round(avg_net * 100, 4),
+        total_gross_pnl_ars=round(total_gross, 2),
+        total_net_pnl_ars=round(total_net, 2),
+        avg_duration_hours=round(avg_duration, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Paper trading — core logic (called on every refresh)
+# ---------------------------------------------------------------------------
+
+def process_paper_trades(
+    pair_id: str,
+    pair_label: str,
+    ratio: float,
+    z_score: float,
+    direction: str,
+    close_reason: str = "convergence",
+) -> None:
+    """
+    Called after each price refresh for a pair.
+    - If no open trade and |z| >= threshold → open a new paper trade.
+    - If open trade exists and |z| <= PAPER_CLOSE_Z_THRESHOLD → close it with P&L.
+    Only one open trade per pair at a time.
+    """
+    trades = _load_paper_trades()
+
+    open_trade = next(
+        (t for t in trades if t.pair_id == pair_id and t.status == "open"), None
+    )
+
+    if open_trade is None:
+        # Check if we should open a new trade
+        if abs(z_score) >= ALERT_Z_THRESHOLD:
+            new_trade = PaperTrade(
+                id=str(uuid.uuid4()),
+                pair_id=pair_id,
+                pair_label=pair_label,
+                opened_at=datetime.now(timezone.utc),
+                open_ratio=ratio,
+                open_z_score=z_score,
+                direction=direction,
+                notional_ars=PAPER_TRADE_NOTIONAL,
+                roundtrip_commission_pct=ROUNDTRIP_COMMISSION,
+                status="open",
+            )
+            trades.append(new_trade)
+            logger.info(
+                f"[PaperTrade] OPEN {pair_id}: ratio={ratio:.4f} z={z_score:.2f}σ "
+                f"direction={direction}"
+            )
+    else:
+        # Check if spread has converged enough to close
+        if abs(z_score) <= PAPER_CLOSE_Z_THRESHOLD:
+            _close_paper_trade(open_trade, ratio, z_score, close_reason)
+            logger.info(
+                f"[PaperTrade] CLOSE {pair_id}: ratio={ratio:.4f} z={z_score:.2f}σ "
+                f"reason={close_reason} net={open_trade.net_pnl_pct}"
+            )
+
+    _save_paper_trades(trades)
+
+
+def _close_paper_trade(
+    trade: PaperTrade,
+    close_ratio: float,
+    close_z_score: float,
+    close_reason: str,
+) -> None:
+    """Mutates trade in-place: computes P&L and marks as closed."""
+    trade.closed_at = datetime.now(timezone.utc)
+    trade.close_ratio = close_ratio
+    trade.close_z_score = close_z_score
+    trade.close_reason = close_reason
+    trade.status = "closed"
+
+    # P&L: if LOCAL_CHEAP we bought local/sold NY at open, reversed at close
+    # The gain is how much the ratio moved back toward mean
+    if trade.direction == "LOCAL_CHEAP":
+        # We bought the cheaper leg; gain if ratio increased (local appreciated vs NY)
+        raw_pnl = (close_ratio - trade.open_ratio) / trade.open_ratio
+    else:
+        # NY_CHEAP: bought NY leg; gain if ratio decreased (NY appreciated vs local)
+        raw_pnl = (trade.open_ratio - close_ratio) / trade.open_ratio
+
+    gross_pct = raw_pnl
+    net_pct = gross_pct - trade.roundtrip_commission_pct
+
+    trade.gross_pnl_pct = round(gross_pct, 6)
+    trade.net_pnl_pct = round(net_pct, 6)
+    trade.gross_pnl_ars = round(gross_pct * trade.notional_ars, 2)
+    trade.net_pnl_ars = round(net_pct * trade.notional_ars, 2)
+
+
+def close_open_paper_trades_eod(pair_id: str, ratio: float, z_score: float) -> None:
+    """Called by EOD logic when eod_action == 'close' for a pair."""
+    trades = _load_paper_trades()
+    open_trade = next(
+        (t for t in trades if t.pair_id == pair_id and t.status == "open"), None
+    )
+    if open_trade:
+        _close_paper_trade(open_trade, ratio, z_score, "eod_close")
+        logger.info(f"[PaperTrade] EOD-CLOSE {pair_id}: net={open_trade.net_pnl_pct}")
+        _save_paper_trades(trades)
+
+
+def get_paper_trades(limit: int = 100) -> PaperTradeResponse:
+    trades = _load_paper_trades()
+    open_trades = [t for t in trades if t.status == "open"]
+    closed_trades = list(reversed([t for t in trades if t.status == "closed"]))
+    closed_trades = closed_trades[:limit]
+    stats = _compute_paper_stats([t for t in trades if t.status == "closed"])
+    return PaperTradeResponse(
+        open_trades=open_trades,
+        closed_trades=closed_trades,
+        stats=stats,
+        notional_ars=PAPER_TRADE_NOTIONAL,
+    )
 
 
 # ---------------------------------------------------------------------------

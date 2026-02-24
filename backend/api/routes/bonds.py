@@ -2,14 +2,14 @@
 Bond arbitrage monitor — REST API routes.
 
 Endpoints:
-  GET  /api/bonds/status          — full status: all pairs, latest ratios, alerts
-  POST /api/bonds/refresh         — trigger immediate data refresh
+  GET  /api/bonds/status            — full status: all pairs, latest ratios, alerts
+  POST /api/bonds/refresh           — trigger immediate data refresh
   GET  /api/bonds/{pair_id}/history — historical ratio series for one pair
-  POST /api/bonds/order           — place a bond order (sandbox by default)
+  POST /api/bonds/order             — place a bond order (sandbox by default)
+  GET  /api/bonds/paper-trades      — paper trade log + stats
 """
 import asyncio
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -19,8 +19,9 @@ from models.bond_models import (
     BondOrderRequest,
     BondOrderResponse,
     OrderLogResponse,
+    PaperTradeResponse,
 )
-from services.bond_service import bond_monitor, execute_order, get_order_log
+from services.bond_service import bond_monitor, execute_order, get_order_log, get_paper_trades
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bonds", tags=["bonds"])
@@ -87,3 +88,14 @@ async def place_bond_order(req: BondOrderRequest):
         # can display the error message from the IOL API.
         pass
     return result
+
+
+@router.get("/paper-trades", response_model=PaperTradeResponse)
+async def get_paper_trade_log(
+    limit: int = Query(default=100, ge=1, le=500, description="Max closed trades to return"),
+):
+    """
+    Return the paper trading log: open positions + closed trades with P&L.
+    Trades are opened automatically when z-score >= threshold and closed at ±0.5σ.
+    """
+    return get_paper_trades(limit=limit)
