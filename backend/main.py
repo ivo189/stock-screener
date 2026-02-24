@@ -3,6 +3,11 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env from the backend directory (ignored by git)
+load_dotenv(Path(__file__).parent / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,8 +16,10 @@ from fastapi.responses import FileResponse
 from api.routes.screener import router as screener_router
 from api.routes.stocks import router as stocks_router
 from api.routes.portfolio import router as portfolio_router
+from api.routes.bonds import router as bonds_router
 from core.cache import stock_cache
 from core.scheduler import start_scheduler, run_full_refresh
+from services.bond_service import bond_monitor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +46,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info(f"Cache is fresh ({loaded} tickers). Skipping immediate refresh.")
 
-    # Start the daily scheduler
+    # Warm bond monitor from disk and trigger initial fetch
+    bond_monitor.warm_from_disk()
+    import asyncio
+    asyncio.create_task(bond_monitor.refresh_all())
+    logger.info("Bond monitor initialised; initial price fetch scheduled.")
+
+    # Start the daily scheduler (stocks + bonds)
     start_scheduler()
 
     yield
@@ -70,6 +83,7 @@ app.add_middleware(
 app.include_router(screener_router)
 app.include_router(stocks_router)
 app.include_router(portfolio_router)
+app.include_router(bonds_router)
 
 
 @app.get("/api/health")
