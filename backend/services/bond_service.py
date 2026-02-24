@@ -246,9 +246,11 @@ class BondMonitor:
         data = [s.model_dump(mode="json") for s in history]
         # Siempre guardar en disco
         self._write_to_disk(pair_id, history)
-        # Push a GitHub cada 4 refreshes para no exceder límites de la API
+        # Push a GitHub: en el primer refresh (para sobrevivir deploy inmediato)
+        # y luego cada 4 (≈ 1h) para no exceder límites de la API
         self._save_counter[pair_id] = self._save_counter.get(pair_id, 0) + 1
-        if self._save_counter[pair_id] % 4 == 0:
+        c = self._save_counter[pair_id]
+        if c == 1 or c % 4 == 0:
             filename = f"{pair_id}.json"
             t = threading.Thread(
                 target=github_storage.push,
