@@ -108,7 +108,11 @@ class BondPairState(BaseModel):
     commission: Optional[CommissionInfo] = None  # always-present cost info
     history: list[RatioSnapshot] = []
     last_fetch_error: Optional[str] = None
-    eod_signal: bool = False    # True when market is about to close → go cash
+    eod_signal: bool = False    # True when market is about to close
+    eod_action: str = "none"    # "hold" | "close" | "none"
+                                # hold  = spread persists, keep position overnight
+                                # close = spread converged, safe to exit
+                                # none  = EOD window not active
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +127,7 @@ class BondsStatusResponse(BaseModel):
     refresh_running: bool = False
     iol_authenticated: bool = False
     market_open: bool = False
-    eod_signal: bool = False        # global EOD flag
+    eod_signal: bool = False        # global EOD window active flag
     commission_rate: float = 0.005  # total round-trip cost
 
 

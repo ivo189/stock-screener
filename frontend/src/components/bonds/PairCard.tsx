@@ -3,8 +3,8 @@
  * Expandable: shows control chart, Bollinger stats, and commission P&L breakdown.
  */
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
-import type { BondPairState, BondHistoryResponse, CommissionInfo } from '../../types/bonds';
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Loader2, TrendingDown, TrendingUp, Moon, LogOut } from 'lucide-react';
+import type { BondPairState, BondHistoryResponse, CommissionInfo, EodAction } from '../../types/bonds';
 import RatioChart from './RatioChart';
 
 interface Props {
@@ -84,9 +84,43 @@ function formatPrice(v: number | null | undefined) {
 // Main card
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// EOD banner component
+// ---------------------------------------------------------------------------
+
+function EodBanner({ action }: { action: EodAction }) {
+  if (action === 'none') return null;
+
+  if (action === 'hold') {
+    return (
+      <div className="px-4 py-2 bg-blue-900/30 border-t border-blue-500/30 flex items-start gap-2">
+        <Moon size={14} className="text-blue-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-blue-200 text-xs font-semibold">Cierre próximo — Mantener posición</p>
+          <p className="text-blue-300/70 text-xs mt-0.5">
+            El desarbitraje persiste (z &gt; 1σ). Conviene mantener la posición overnight — el spread puede cerrar mañana.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-2 bg-yellow-900/30 border-t border-yellow-600/30 flex items-start gap-2">
+      <LogOut size={14} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="text-yellow-200 text-xs font-semibold">Cierre próximo — Cerrar posición</p>
+        <p className="text-yellow-300/70 text-xs mt-0.5">
+          El spread convergió (z &lt; 1σ). El arbitraje se realizó — conviene salir antes del cierre.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function PairCard({ state, historyData, onOpenOrder, isLoadingHistory }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const { config, latest, stats, alert, commission, last_fetch_error, eod_signal } = state;
+  const { config, latest, stats, alert, commission, last_fetch_error, eod_signal, eod_action } = state;
 
   const hasAlert = !!alert;
   const cardBorder = eod_signal
@@ -162,15 +196,8 @@ export default function PairCard({ state, historyData, onOpenOrder, isLoadingHis
         </div>
       </div>
 
-      {/* EOD banner */}
-      {eod_signal && (
-        <div className="px-4 py-2 bg-yellow-900/30 border-t border-yellow-600/30 flex items-center gap-2">
-          <AlertTriangle size={14} className="text-yellow-400 flex-shrink-0" />
-          <p className="text-yellow-200 text-xs font-medium">
-            Cierre de mercado próximo — señal de liquidación de posiciones (ir a cash).
-          </p>
-        </div>
-      )}
+      {/* EOD banner — smart: hold or close based on z-score */}
+      {eod_signal && <EodBanner action={eod_action ?? 'none'} />}
 
       {/* Alert banner (only when profitable) */}
       {hasAlert && !eod_signal && (

@@ -51,6 +51,8 @@ export interface ArbitrageAlert {
   commission: CommissionInfo | null;
 }
 
+export type EodAction = 'hold' | 'close' | 'none';
+
 export interface BondPairState {
   config: BondPairConfig;
   latest: RatioSnapshot | null;
@@ -60,6 +62,7 @@ export interface BondPairState {
   history: RatioSnapshot[];
   last_fetch_error: string | null;
   eod_signal: boolean;
+  eod_action: EodAction;  // 'hold' | 'close' | 'none'
 }
 
 export interface BondsStatusResponse {

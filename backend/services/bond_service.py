@@ -151,15 +151,32 @@ class BondMonitor:
         self._eod_signal: bool = False
 
     # ------------------------------------------------------------------
-    # EOD signal
+    # EOD signal (smart: hold if spread persists, close if converged)
     # ------------------------------------------------------------------
+
+    EOD_HOLD_Z_THRESHOLD = 1.0  # abs(z) >= this → spread persists → hold overnight
 
     def set_eod_signal(self, active: bool) -> None:
         self._eod_signal = active
         for state in self._pairs.values():
             state.eod_signal = active
+            if active:
+                # Per-pair action based on current z-score
+                z = state.stats.z_score if state.stats else 0.0
+                if abs(z) >= self.EOD_HOLD_Z_THRESHOLD:
+                    state.eod_action = "hold"
+                    logger.info(
+                        f"EOD [{state.config.id}]: spread persists (z={z:.2f}) — HOLD overnight."
+                    )
+                else:
+                    state.eod_action = "close"
+                    logger.info(
+                        f"EOD [{state.config.id}]: spread converged (z={z:.2f}) — CLOSE position."
+                    )
+            else:
+                state.eod_action = "none"
         if active:
-            logger.warning("EOD signal ACTIVE — all pairs flagged: go to cash.")
+            logger.warning("EOD window ACTIVE — per-pair actions: hold/close assigned.")
         else:
             logger.info("EOD signal cleared — new trading day.")
 

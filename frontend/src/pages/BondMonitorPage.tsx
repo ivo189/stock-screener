@@ -187,18 +187,33 @@ export default function BondMonitorPage() {
 
         {status && (
           <>
-            {/* Global EOD banner */}
-            {status.eod_signal && (
-              <div className="flex items-center gap-3 px-4 py-3 bg-yellow-900/30 border border-yellow-600/40 rounded-lg">
-                <Moon size={18} className="text-yellow-400 flex-shrink-0" />
-                <div>
-                  <p className="text-yellow-200 text-sm font-semibold">Señal de cierre diario activa</p>
-                  <p className="text-yellow-300/70 text-xs mt-0.5">
-                    El mercado cierra en menos de 10 minutos. Liquidar todas las posiciones abiertas y volver a cash.
-                  </p>
+            {/* Global EOD banner — smart summary */}
+            {status.eod_signal && (() => {
+              const holdCount = status.pairs.filter(p => p.eod_action === 'hold').length;
+              const closeCount = status.pairs.filter(p => p.eod_action === 'close').length;
+              return (
+                <div className="flex items-start gap-3 px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg">
+                  <Moon size={18} className="text-slate-300 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-slate-200 text-sm font-semibold">Ventana de cierre activa — acciones recomendadas por par</p>
+                    <div className="flex flex-wrap gap-3 text-xs mt-1">
+                      {holdCount > 0 && (
+                        <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-blue-900/40 border border-blue-600/30 text-blue-300">
+                          <Moon size={11} />
+                          {holdCount} {holdCount === 1 ? 'par' : 'pares'} — mantener overnight (spread persiste)
+                        </span>
+                      )}
+                      {closeCount > 0 && (
+                        <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-900/40 border border-yellow-600/30 text-yellow-300">
+                          {closeCount} {closeCount === 1 ? 'par' : 'pares'} — cerrar posición (spread convergió)
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 text-xs">Ver cada par para el detalle de la acción recomendada.</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Commission config info */}
             <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-xs text-slate-400">
@@ -263,7 +278,8 @@ export default function BondMonitorPage() {
               <p>• <span className="text-sky-400">Línea azul punteada</span>: media móvil (ventana 20 períodos de 15 min)</p>
               <p>• <span className="text-blue-400">Bandas ±2σ</span>: zona de alerta estadística</p>
               <p>• <span className="text-orange-300">Alerta</span>: z-score ≥ 2.0 (anomalía estadística) — la comisión se muestra como referencia</p>
-              <p>• <span className="text-yellow-400">Señal EOD</span>: 10 min antes del cierre → liquidar posiciones</p>
+              <p>• <span className="text-blue-400">EOD — Mantener</span>: z &gt; 1σ al cierre → el spread persiste, conviene holdear overnight</p>
+              <p>• <span className="text-yellow-400">EOD — Cerrar</span>: z &lt; 1σ al cierre → el spread convergió, conviene salir</p>
             </div>
           </>
         )}
