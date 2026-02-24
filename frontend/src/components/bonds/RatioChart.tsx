@@ -34,6 +34,7 @@ type ViewWindow = '1d' | '5d' | '14d' | 'all';
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Label completo para el tooltip: dd/mm HH:MM */
 function formatTs(iso: string): string {
   const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
   return d.toLocaleString('es-AR', {
@@ -45,13 +46,14 @@ function formatTs(iso: string): string {
   });
 }
 
-function formatTsShort(iso: string): string {
+/** Label del eje X: siempre dd/mm HH:MM */
+function formatXAxis(iso: string): string {
   const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-  return d.toLocaleString('es-AR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour12: false,
-  });
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${min}`;
 }
 
 // Approx points per window: 4 refreshes/hr × 6h market × trading days
@@ -106,9 +108,12 @@ export default function RatioChart({ data }: Props) {
 
   // Build chart data — use rolling stats from each snapshot if available,
   // fall back to current flat stats for older points without rolling data
+  // Mostrar punto en ratio cuando hay <= 80 puntos (vista 1d o 5d con pocos datos)
+  const showDots = sliced.length <= 80;
+
   const chartData = sliced.map((s) => ({
     ts: formatTs(s.timestamp),
-    tsShort: formatTsShort(s.timestamp),
+    tsAxis: formatXAxis(s.timestamp),
     ratio: s.ratio,
     // Rolling (dynamic) values take priority; fall back to current flat stats
     mean:   s.mean   ?? stats?.mean,
@@ -135,9 +140,6 @@ export default function RatioChart({ data }: Props) {
   ]).filter(Boolean) as number[];
   const minR = Math.min(...allValues) * 0.998;
   const maxR = Math.max(...allValues) * 1.002;
-
-  // Show day-boundary reference lines when viewing >1d
-  const useShortLabel = view !== '1d';
 
   return (
     <div className="space-y-2">
@@ -166,7 +168,7 @@ export default function RatioChart({ data }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
 
           <XAxis
-            dataKey={useShortLabel ? 'tsShort' : 'ts'}
+            dataKey="tsAxis"
             tick={{ fontSize: 10, fill: '#64748b' }}
             tickLine={false}
             interval="preserveStartEnd"
@@ -286,13 +288,14 @@ export default function RatioChart({ data }: Props) {
             connectNulls
           />
 
-          {/* Ratio line */}
+          {/* Ratio line — con puntos cuando hay pocos datos */}
           <Line
             type="monotone"
             dataKey="ratio"
             stroke="#34d399"
             strokeWidth={2}
-            dot={false}
+            dot={showDots ? { r: 3, fill: '#34d399', stroke: '#0f172a', strokeWidth: 1 } : false}
+            activeDot={{ r: 5, fill: '#34d399', stroke: '#0f172a', strokeWidth: 1.5 }}
             name="Ratio"
             isAnimationActive={false}
           />

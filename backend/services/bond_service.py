@@ -87,7 +87,7 @@ ORDER_LOG_FILE = BONDS_CACHE_DIR / "order_log.json"
 MAX_ORDER_LOG_ENTRIES = 200
 
 ROLLING_WINDOW = 20
-ALERT_Z_THRESHOLD = float(os.getenv("BOND_ALERT_Z_THRESHOLD", "2.0"))
+ALERT_Z_THRESHOLD = float(os.getenv("BOND_ALERT_Z_THRESHOLD", "1.0"))
 # 14 días hábiles × 6h mercado/día × 4 refreshes/hora = ~1.344 puntos
 MAX_HISTORY_POINTS = 1500
 
