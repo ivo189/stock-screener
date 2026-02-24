@@ -242,6 +242,7 @@ class BondMonitor:
 
     def _save_history(self, pair_id: str, history: list[RatioSnapshot]) -> None:
         """Escribe al disco Y pushea a GitHub cada 4 refreshes (≈ cada hora)."""
+        import threading
         data = [s.model_dump(mode="json") for s in history]
         # Siempre guardar en disco
         self._write_to_disk(pair_id, history)
@@ -249,9 +250,12 @@ class BondMonitor:
         self._save_counter[pair_id] = self._save_counter.get(pair_id, 0) + 1
         if self._save_counter[pair_id] % 4 == 0:
             filename = f"{pair_id}.json"
-            asyncio.create_task(
-                asyncio.to_thread(github_storage.push, filename, data)
+            t = threading.Thread(
+                target=github_storage.push,
+                args=(filename, data),
+                daemon=True,
             )
+            t.start()
 
     def warm_from_disk(self) -> None:
         for pair_id, state in self._pairs.items():
