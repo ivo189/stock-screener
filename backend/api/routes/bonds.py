@@ -51,11 +51,11 @@ async def trigger_bond_refresh():
 @router.get("/{pair_id}/history", response_model=BondHistoryResponse)
 async def get_pair_history(
     pair_id: str,
-    limit: int = Query(default=200, ge=1, le=500, description="Max number of history points"),
+    limit: int = Query(default=1500, ge=1, le=1500, description="Max history points (~14 trading days)"),
 ):
     """
-    Return the historical ratio series for a single bond pair.
-    Useful for rendering the control chart on the frontend.
+    Return the historical ratio series for a single bond pair with rolling Bollinger stats.
+    Each point includes mean, ±1σ, ±2σ and z_score computed over the rolling window.
     """
     try:
         return bond_monitor.get_pair_history(pair_id, limit=limit)

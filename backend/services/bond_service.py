@@ -88,7 +88,8 @@ MAX_ORDER_LOG_ENTRIES = 200
 
 ROLLING_WINDOW = 20
 ALERT_Z_THRESHOLD = float(os.getenv("BOND_ALERT_Z_THRESHOLD", "2.0"))
-MAX_HISTORY_POINTS = 500
+# 14 días hábiles × 6h mercado/día × 4 refreshes/hora = ~1.344 puntos
+MAX_HISTORY_POINTS = 1500
 
 # Commission parameters — configurable via .env
 # Total end-to-end round-trip cost (both legs combined), e.g. 0.005 = 0.5%
@@ -362,14 +363,16 @@ class BondMonitor:
             commission_rate=ROUNDTRIP_COMMISSION,
         )
 
-    def get_pair_history(self, pair_id: str, limit: int = 200) -> BondHistoryResponse:
+    def get_pair_history(self, pair_id: str, limit: int = 500) -> BondHistoryResponse:
         state = self._pairs.get(pair_id)
         if state is None:
             raise KeyError(f"Unknown pair_id: {pair_id}")
+        sliced = state.history[-limit:]
+        enriched = _enrich_history_with_rolling_stats(sliced, ROLLING_WINDOW)
         return BondHistoryResponse(
             pair_id=pair_id,
             pair_label=state.config.label,
-            history=state.history[-limit:],
+            history=enriched,
             stats=state.stats,
         )
 
@@ -383,6 +386,37 @@ class BondMonitor:
 # ---------------------------------------------------------------------------
 # Statistical helpers
 # ---------------------------------------------------------------------------
+
+def _enrich_history_with_rolling_stats(
+    history: list[RatioSnapshot], window: int
+) -> list[RatioSnapshot]:
+    """
+    For each snapshot in history, compute rolling Bollinger stats using
+    the previous `window` points. Returns new snapshot objects with
+    mean/upper2/lower2/upper1/lower1/z_score populated.
+    Points with fewer than 2 predecessors get None stats.
+    """
+    import copy
+    result = []
+    for i, snap in enumerate(history):
+        s = copy.copy(snap)
+        window_data = history[max(0, i - window + 1): i + 1]
+        if len(window_data) >= 2:
+            ratios = [x.ratio for x in window_data]
+            n = len(ratios)
+            mean = sum(ratios) / n
+            variance = sum((r - mean) ** 2 for r in ratios) / max(n - 1, 1)
+            std = variance ** 0.5
+            z = (snap.ratio - mean) / std if std > 0 else 0.0
+            s.mean = round(mean, 6)
+            s.upper2 = round(mean + 2 * std, 6)
+            s.lower2 = round(mean - 2 * std, 6)
+            s.upper1 = round(mean + std, 6)
+            s.lower1 = round(mean - std, 6)
+            s.z_score = round(z, 4)
+        result.append(s)
+    return result
+
 
 def _compute_stats(history: list[RatioSnapshot], window: int) -> Optional[RatioStats]:
     if len(history) < 2:

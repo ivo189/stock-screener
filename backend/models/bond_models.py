@@ -61,6 +61,13 @@ class RatioSnapshot(BaseModel):
     local_price: float
     ny_price: float
     ratio: float                # local / ny
+    # Rolling Bollinger stats at this point — only populated in history endpoint, not stored on disk
+    mean: Optional[float] = None
+    upper2: Optional[float] = None   # mean + 2σ
+    lower2: Optional[float] = None   # mean - 2σ
+    upper1: Optional[float] = None   # mean + 1σ
+    lower1: Optional[float] = None   # mean - 1σ
+    z_score: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------

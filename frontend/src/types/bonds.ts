@@ -17,6 +17,13 @@ export interface RatioSnapshot {
   local_price: number;
   ny_price: number;
   ratio: number;
+  // Rolling Bollinger stats at this point (populated by history endpoint)
+  mean?: number | null;
+  upper2?: number | null;
+  lower2?: number | null;
+  upper1?: number | null;
+  lower1?: number | null;
+  z_score?: number | null;
 }
 
 export interface RatioStats {
