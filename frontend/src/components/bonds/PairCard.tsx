@@ -1,10 +1,10 @@
 /**
  * Card showing the current state of one bond pair.
- * Expandable: shows control chart, Bollinger stats, and commission P&L breakdown.
+ * Expandable: shows control chart and Bollinger stats.
  */
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Loader2, TrendingDown, TrendingUp, Moon, LogOut } from 'lucide-react';
-import type { BondPairState, BondHistoryResponse, CommissionInfo, EodAction } from '../../types/bonds';
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Loader2, Moon, LogOut } from 'lucide-react';
+import type { BondPairState, BondHistoryResponse, EodAction } from '../../types/bonds';
 import RatioChart from './RatioChart';
 
 interface Props {
@@ -35,45 +35,6 @@ function ZScoreBadge({ z }: { z: number }) {
   );
 }
 
-function CommissionPanel({ comm, direction }: { comm: CommissionInfo; direction?: string }) {
-  const netColor = comm.is_profitable ? 'text-emerald-300' : 'text-red-300';
-  const netBg = comm.is_profitable ? 'bg-emerald-900/20 border-emerald-700/30' : 'bg-red-900/20 border-red-700/30';
-
-  return (
-    <div className={`rounded-lg border p-3 ${netBg}`}>
-      <p className="text-slate-300 text-xs font-medium mb-2 flex items-center gap-1.5">
-        {direction === 'LOCAL_CHEAP' ? <TrendingDown size={12} className="text-emerald-400" /> : <TrendingUp size={12} className="text-orange-400" />}
-        Análisis de rentabilidad (intradiario)
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-        <div className="bg-slate-800/60 rounded p-1.5">
-          <p className="text-slate-500 text-xs">Spread bruto</p>
-          <p className="text-white font-mono text-xs mt-0.5">{comm.gross_spread_pct.toFixed(3)}%</p>
-        </div>
-        <div className="bg-slate-800/60 rounded p-1.5">
-          <p className="text-slate-500 text-xs">Comisión total</p>
-          <p className="text-red-300 font-mono text-xs mt-0.5">−{comm.roundtrip_cost_pct.toFixed(2)}%</p>
-          <p className="text-slate-600 text-xs">round-trip</p>
-        </div>
-        <div className="bg-slate-800/60 rounded p-1.5">
-          <p className="text-slate-500 text-xs">Spread neto</p>
-          <p className={`font-mono text-xs mt-0.5 font-semibold ${netColor}`}>
-            {comm.net_spread_pct >= 0 ? '+' : ''}{comm.net_spread_pct.toFixed(3)}%
-          </p>
-        </div>
-        <div className="bg-slate-800/60 rounded p-1.5">
-          <p className="text-slate-500 text-xs">Breakeven ratio</p>
-          <p className="text-slate-200 font-mono text-xs mt-0.5">{comm.breakeven_ratio.toFixed(4)}</p>
-        </div>
-      </div>
-      {!comm.is_profitable && (
-        <p className="text-red-400 text-xs mt-2">
-          El spread bruto ({comm.gross_spread_pct.toFixed(3)}%) no cubre la comisión ({comm.roundtrip_cost_pct.toFixed(2)}%). Operar con pérdida.
-        </p>
-      )}
-    </div>
-  );
-}
 
 function formatPrice(v: number | null | undefined) {
   if (v == null) return '—';
@@ -171,14 +132,10 @@ export default function PairCard({ state, historyData, onOpenOrder, isLoadingHis
                 <p className="text-xs text-slate-500">Ratio</p>
                 <p className="font-mono text-white text-sm">{latest.ratio.toFixed(4)}</p>
               </div>
-              {/* Net spread pill — always visible when we have commission data */}
-              {commission && (
-                <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono ${
-                  commission.is_profitable
-                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-600/30'
-                    : 'bg-slate-700/50 text-slate-400 border-slate-600/30'
-                }`}>
-                  {commission.net_spread_pct >= 0 ? '+' : ''}{commission.net_spread_pct.toFixed(2)}% neto
+              {/* Gross spread pill — always visible when we have stats */}
+              {commission && stats && (
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono bg-slate-700/50 text-slate-300 border-slate-600/30">
+                  {commission.gross_spread_pct.toFixed(2)}% spread
                 </span>
               )}
               {stats && <ZScoreBadge z={stats.z_score} />}
@@ -210,14 +167,6 @@ export default function PairCard({ state, historyData, onOpenOrder, isLoadingHis
       {/* Expanded section */}
       {expanded && (
         <div className="border-t border-slate-700 px-4 py-4 space-y-4">
-          {/* Commission P&L breakdown — shown always */}
-          {commission && (
-            <CommissionPanel
-              comm={commission}
-              direction={alert?.direction}
-            />
-          )}
-
           {/* Bollinger stats */}
           {stats && (
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 text-center">

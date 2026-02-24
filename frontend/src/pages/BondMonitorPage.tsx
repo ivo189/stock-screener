@@ -9,8 +9,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   RefreshCw,
-  Shield,
-  AlertTriangle,
   Wifi,
   WifiOff,
   Clock,
@@ -178,7 +176,7 @@ export default function BondMonitorPage() {
 
         {isError && (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-red-400">
-            <AlertTriangle size={28} />
+            <Activity size={28} />
             <p className="text-sm">{(error as Error).message}</p>
             <p className="text-xs text-slate-500">
               Verificá que el backend esté corriendo y que las credenciales de IOL estén configuradas en .env
@@ -216,23 +214,10 @@ export default function BondMonitorPage() {
               );
             })()}
 
-            {/* Commission config info */}
-            <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-xs text-slate-400">
-              <Shield size={12} className="flex-shrink-0" />
-              <span>
-                Costo round-trip total:{' '}
-                <span className="text-orange-300 font-medium">{(status.commission_rate * 100).toFixed(2)}%</span>
-                {' · '}
-                Las alertas se disparan por z-score — la comisión se muestra como referencia
-                {' · '}
-                <span className="text-slate-500">Configurable en .env (IOL_ROUNDTRIP_COMMISSION)</span>
-              </span>
-            </div>
-
             {/* Alert summary */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Shield size={13} className="text-slate-400" />
+                <Activity size={13} className="text-slate-400" />
                 <h2 className="text-slate-300 text-xs font-medium uppercase tracking-wider">
                   Estado del monitor
                   {activeAlerts > 0 && (
