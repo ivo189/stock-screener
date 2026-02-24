@@ -80,7 +80,10 @@ BOND_PAIRS: list[BondPairConfig] = [
     ),
 ]
 
-BONDS_CACHE_DIR = Path(__file__).parent.parent / "cache" / "bonds"
+# BONDS_CACHE_DIR: usar la variable de entorno BONDS_CACHE_DIR si está definida
+# (apunta al disco persistente de Render), sino usar el path local por defecto.
+_default_cache = Path(__file__).parent.parent / "cache" / "bonds"
+BONDS_CACHE_DIR = Path(os.getenv("BONDS_CACHE_DIR", str(_default_cache)))
 BONDS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 ORDER_LOG_FILE = BONDS_CACHE_DIR / "order_log.json"
