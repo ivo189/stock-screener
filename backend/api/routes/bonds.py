@@ -10,6 +10,7 @@ Endpoints:
 """
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -21,7 +22,8 @@ from models.bond_models import (
     OrderLogResponse,
     PaperTradeResponse,
 )
-from services.bond_service import bond_monitor, execute_order, get_order_log, get_paper_trades
+from services.bond_service import bond_monitor, execute_order, get_order_log, get_paper_trades, BONDS_CACHE_DIR
+import services.github_storage as github_storage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bonds", tags=["bonds"])
@@ -99,3 +101,24 @@ async def get_paper_trade_log(
     Trades are opened automatically when z-score >= threshold and closed at ±0.5σ.
     """
     return get_paper_trades(limit=limit)
+
+
+@router.get("/debug/storage")
+async def debug_storage():
+    """Diagnóstico de persistencia: disco local y GitHub storage."""
+    pair_ids = ["AL30_GD30", "AL35_GD35", "AE38_GD38", "AL29_GD29", "AL41_GD41"]
+    disk_info = {}
+    for pid in pair_ids:
+        path = BONDS_CACHE_DIR / f"{pid}.json"
+        disk_info[pid] = {
+            "exists": path.exists(),
+            "size_bytes": path.stat().st_size if path.exists() else 0,
+        }
+    return {
+        "github_enabled": github_storage._enabled(),
+        "github_repo": github_storage.GITHUB_REPO,
+        "github_branch": github_storage.GITHUB_BRANCH,
+        "token_set": bool(os.getenv("GITHUB_TOKEN")),
+        "cache_dir": str(BONDS_CACHE_DIR),
+        "disk": disk_info,
+    }
