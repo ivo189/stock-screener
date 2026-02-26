@@ -112,62 +112,62 @@ function SummaryPanel({ openTrades, stats, notional, currentRatios }: SummaryPan
         </span>
       </div>
 
-      {/* Main metrics grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* Total P&L neto */}
-        <div className="col-span-2 sm:col-span-2 rounded-lg bg-slate-700/60 border border-slate-600/40 px-4 py-3 flex flex-col gap-1">
-          <p className="text-slate-400 text-xs">P&L total neto (realizado + abierto)</p>
+      {/* Main metrics: 2 escenarios × 2 segmentos (realizado + no realizado) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+        {/* ── Escenario sin comisiones (bruto) ── */}
+        <div className="rounded-lg bg-emerald-950/40 border border-emerald-700/30 px-4 py-3 space-y-2">
+          <p className="text-emerald-300 text-xs font-semibold">Sin comisiones <span className="text-emerald-700 font-normal">(spread bruto)</span></p>
+          <p className={`font-mono text-xl font-bold ${pnlColor(totalGross)}`}>{fmtArs(totalGross)}</p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <p className="text-slate-500 text-[10px] flex items-center gap-1"><CheckCircle size={9} /> Realizado</p>
+              <p className={`font-mono text-xs font-semibold ${closedCount > 0 ? pnlColor(realisedGross) : 'text-slate-500'}`}>
+                {closedCount > 0 ? fmtArs(realisedGross) : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[10px] flex items-center gap-1"><Clock size={9} /> No realizado</p>
+              <p className={`font-mono text-xs font-semibold ${hasUnrealised ? pnlColor(unrealisedGross) : 'text-slate-500'}`}>
+                {hasUnrealised ? fmtArs(unrealisedGross) : openCount > 0 ? 'Calc…' : '—'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Escenario con comisiones (neto) ── */}
+        <div className="rounded-lg bg-slate-700/50 border border-slate-600/40 px-4 py-3 space-y-2">
+          <p className="text-slate-300 text-xs font-semibold">Con comisiones <span className="text-slate-500 font-normal">(spread neto, −0.5% rt)</span></p>
           <p className={`font-mono text-xl font-bold ${pnlColor(totalNet)}`}>{fmtArs(totalNet)}</p>
-          <p className="text-slate-500 text-[10px] font-mono">
-            Bruto: {fmtArs(totalGross)}
-          </p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <p className="text-slate-500 text-[10px] flex items-center gap-1"><CheckCircle size={9} /> Realizado</p>
+              <p className={`font-mono text-xs font-semibold ${closedCount > 0 ? pnlColor(realisedNet) : 'text-slate-500'}`}>
+                {closedCount > 0 ? fmtArs(realisedNet) : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[10px] flex items-center gap-1"><Clock size={9} /> No realizado</p>
+              <p className={`font-mono text-xs font-semibold ${hasUnrealised ? pnlColor(unrealisedNet) : 'text-slate-500'}`}>
+                {hasUnrealised ? fmtArs(unrealisedNet) : openCount > 0 ? 'Calc…' : '—'}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Realizado */}
-        <div className="rounded-lg bg-slate-700/40 border border-slate-600/30 px-3 py-3 flex flex-col gap-1">
-          <p className="text-slate-400 text-xs flex items-center gap-1">
-            <CheckCircle size={10} className="text-slate-500" />
-            Realizado ({closedCount} trades)
-          </p>
-          <p className={`font-mono text-sm font-semibold ${closedCount > 0 ? pnlColor(realisedNet) : 'text-slate-500'}`}>
-            {closedCount > 0 ? fmtArs(realisedNet) : '—'}
-          </p>
-          {closedCount > 0 && stats && (
-            <p className="text-slate-500 text-[10px] font-mono">
-              Win rate: {stats.win_rate_pct.toFixed(0)}% · avg {fmtPct(stats.avg_net_pnl_pct / 100, 2)}
-            </p>
-          )}
-        </div>
-
-        {/* No realizado */}
-        <div className="rounded-lg bg-slate-700/40 border border-slate-600/30 px-3 py-3 flex flex-col gap-1">
-          <p className="text-slate-400 text-xs flex items-center gap-1">
-            <Clock size={10} className="text-sky-500" />
-            No realizado ({openCount} {openCount === 1 ? 'posición' : 'posiciones'})
-          </p>
-          <p className={`font-mono text-sm font-semibold ${hasUnrealised ? pnlColor(unrealisedNet) : 'text-slate-500'}`}>
-            {hasUnrealised ? fmtArs(unrealisedNet) : openCount > 0 ? 'Calculando…' : '—'}
-          </p>
-          {hasUnrealised && (
-            <p className="text-slate-500 text-[10px] font-mono">
-              Bruto: {fmtArs(unrealisedGross)}
-            </p>
-          )}
-        </div>
       </div>
 
       {/* Closed stats secondary row */}
       {stats && closedCount > 0 && (
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 text-center">
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
           {[
             { label: 'Cerrados', value: stats.total_trades.toString() },
             { label: 'Win rate', value: `${stats.win_rate_pct.toFixed(0)}%` },
             { label: 'Ganadoras', value: stats.winning_trades.toString(), color: 'text-emerald-400' },
             { label: 'Perdedoras', value: stats.losing_trades.toString(), color: 'text-red-400' },
-            { label: 'P&L neto prom.', value: fmtPct(stats.avg_net_pnl_pct / 100, 2) },
-            { label: 'P&L bruto prom.', value: fmtPct(stats.avg_gross_pnl_pct / 100, 2) },
+            { label: 'Bruto prom.', value: fmtPct(stats.avg_gross_pnl_pct / 100, 2) },
+            { label: 'Neto prom.', value: fmtPct(stats.avg_net_pnl_pct / 100, 2) },
             { label: 'Duración media', value: `${stats.avg_duration_hours.toFixed(1)}h` },
-            { label: 'Abiertos', value: openCount.toString(), color: 'text-sky-400' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-slate-700/30 rounded-lg p-2">
               <p className="text-slate-500 text-[10px]">{label}</p>
@@ -295,20 +295,38 @@ function TradeRow({
         )}
       </td>
 
-      {/* P&L bruto */}
-      <td className="px-3 py-2 text-xs font-mono text-slate-400">
-        {grossPct != null ? fmtPct(grossPct) : '—'}
-        {isOpen && unrealised != null && (
-          <span className="text-slate-600 text-[10px] block">no real.</span>
-        )}
+      {/* P&L bruto (sin comisiones) */}
+      <td className="px-3 py-2 text-xs">
+        <div className="flex flex-col gap-0.5">
+          <span className={`font-mono font-semibold ${grossPct != null ? (grossPct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-600'}`}>
+            {grossPct != null ? fmtPct(grossPct) : '—'}
+          </span>
+          {grossPct != null && (
+            <span className="font-mono text-slate-500 text-[10px]">
+              {fmtArs(grossPct * trade.notional_ars)}
+            </span>
+          )}
+          {isOpen && unrealised != null && (
+            <span className="text-slate-600 text-[10px]">no real.</span>
+          )}
+        </div>
       </td>
 
-      {/* P&L neto */}
-      <td className={`px-3 py-2 text-xs font-mono font-semibold ${netColor}`}>
-        {netArs != null ? fmtArs(netArs) : '—'}
-        {isOpen && unrealised != null && (
-          <span className="text-slate-600 text-[10px] font-normal block">no real.</span>
-        )}
+      {/* P&L neto (con comisiones) */}
+      <td className={`px-3 py-2 text-xs`}>
+        <div className="flex flex-col gap-0.5">
+          <span className={`font-mono font-semibold ${netColor}`}>
+            {netArs != null ? fmtArs(netArs) : '—'}
+          </span>
+          {netArs != null && (
+            <span className={`font-mono text-[10px] ${netColor} opacity-70`}>
+              {fmtPct(isOpen ? unrealised?.net_pct : trade.net_pnl_pct)}
+            </span>
+          )}
+          {isOpen && unrealised != null && (
+            <span className="text-slate-600 text-[10px]">no real.</span>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -333,7 +351,7 @@ function TradeTable({
     isOpen ? 'Ratio actual' : 'Salida (exec)',
     'Slip. salida',
     isOpen ? 'Duración' : 'Cierre',
-    'P&L bruto', 'P&L neto (ARS)',
+    'Sin comisión (bruto)', 'Con comisión (neto)',
   ];
   return (
     <table className="w-full text-left">
@@ -415,9 +433,10 @@ export default function PaperTradeLog({ currentRatios = {} }: Props) {
       {/* Metodología */}
       <div className="rounded-lg bg-slate-800/50 border border-slate-700/60 px-4 py-3 text-xs text-slate-400 space-y-1">
         <p className="text-slate-300 font-medium">Metodología de ejecución</p>
-        <p>• <span className="text-slate-200">Ratio entrada/salida</span>: precio ejecutado usando <span className="text-yellow-300">puntas reales (bid/ask)</span> de IOL, no el último precio.</p>
-        <p>• <span className="text-slate-200">Slippage</span>: diferencia entre el último precio y el precio de punta. Negativo = pagamos más / recibimos menos que el último.</p>
-        <p>• <span className="text-slate-200">P&L no realizado</span>: calculado en tiempo real sobre el ratio actual de mercado vs. precio de entrada.</p>
+        <p>• <span className="text-emerald-300">Sin comisión (bruto)</span>: P&L puro del spread, como si el broker no cobrara nada. Tu ganancia real si negociás comisión cero.</p>
+        <p>• <span className="text-slate-200">Con comisión (neto)</span>: descuenta el 0.5% de round-trip configurado (ida + vuelta, ambas patas). Modificable vía <code className="text-slate-400">PAPER_TRADE_COMMISSION</code>.</p>
+        <p>• <span className="text-slate-200">Ratio exec</span>: precio ejecutado usando <span className="text-yellow-300">puntas bid/ask</span> de IOL, no el último precio.</p>
+        <p>• <span className="text-slate-200">Slippage</span>: diferencia entre el último precio y la punta. Negativo = pagamos más / recibimos menos.</p>
         <p className="text-slate-500">Señal de apertura: |z| ≥ 1σ · Señal de cierre: |z| ≤ 0.5σ · Nocional: ARS 100.000 por trade.</p>
       </div>
 
