@@ -259,7 +259,13 @@ export default function BondMonitorPage() {
 
             {/* Paper trade log */}
             <div className="bg-slate-800/50 rounded-lg px-4 py-4 border border-slate-700">
-              <PaperTradeLog />
+              <PaperTradeLog
+                currentRatios={Object.fromEntries(
+                  status.pairs
+                    .filter(p => p.latest != null)
+                    .map(p => [p.config.id, p.latest!.ratio])
+                )}
+              />
             </div>
 
             {/* Legend */}
