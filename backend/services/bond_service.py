@@ -103,7 +103,7 @@ ROUNDTRIP_COMMISSION = float(os.getenv("IOL_ROUNDTRIP_COMMISSION", "0.005"))
 # Commission defaults to 0 — record gross P&L until real commissions are negotiated
 PAPER_CLOSE_Z_THRESHOLD = float(os.getenv("PAPER_CLOSE_Z_THRESHOLD", "0.5"))
 PAPER_TRADE_NOTIONAL = float(os.getenv("PAPER_TRADE_NOTIONAL", "100000.0"))
-PAPER_TRADE_COMMISSION = float(os.getenv("PAPER_TRADE_COMMISSION", "0.0"))
+PAPER_TRADE_COMMISSION = float(os.getenv("PAPER_TRADE_COMMISSION", "0.005"))  # 0.5% round-trip default
 PAPER_TRADES_FILE = BONDS_CACHE_DIR / "paper_trades.json"
 MAX_PAPER_TRADES = 500
 
