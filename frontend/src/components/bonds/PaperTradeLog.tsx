@@ -75,6 +75,26 @@ function StatsBar({ stats }: { stats: PaperTradeStats; notional: number }) {
   );
 }
 
+function SlippageBadge({ slippage }: { slippage: number | null }) {
+  if (slippage == null) return <span className="text-slate-600">—</span>;
+  const pct = slippage * 100;
+  const color = pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+  return (
+    <span className={`font-mono ${color}`} title="Slippage vs. último precio">
+      {pct >= 0 ? '+' : ''}{pct.toFixed(3)}%
+    </span>
+  );
+}
+
+function ExecRatioBadge({ execRatio, lastRatio }: { execRatio: number | null; lastRatio: number }) {
+  if (execRatio == null) return <span className="text-slate-400 font-mono">{lastRatio.toFixed(4)}</span>;
+  return (
+    <span className="font-mono text-slate-200" title={`Ratio ejecutado con puntas (bid/ask). Último: ${lastRatio.toFixed(4)}`}>
+      {execRatio.toFixed(4)}
+    </span>
+  );
+}
+
 function TradeRow({ trade, isOpen }: { trade: PaperTrade; isOpen: boolean }) {
   const isWin = (trade.net_pnl_ars ?? 0) >= 0;
   const netColor = isOpen ? 'text-slate-400' : isWin ? 'text-emerald-400' : 'text-red-400';
@@ -82,6 +102,10 @@ function TradeRow({ trade, isOpen }: { trade: PaperTrade; isOpen: boolean }) {
     ? <TrendingDown size={12} className="text-emerald-400 flex-shrink-0" />
     : <TrendingUp size={12} className="text-orange-400 flex-shrink-0" />;
   const dirLabel = trade.direction === 'LOCAL_CHEAP' ? 'Local barato' : 'NY barato';
+
+  // Show exec ratio when available; otherwise fall back to last price
+  const hasExecOpen  = trade.open_exec_ratio  != null;
+  const hasExecClose = trade.close_exec_ratio != null;
 
   return (
     <tr className="border-t border-slate-700/50 hover:bg-slate-700/20 transition-colors">
@@ -91,13 +115,44 @@ function TradeRow({ trade, isOpen }: { trade: PaperTrade; isOpen: boolean }) {
           {dirIcon}{dirLabel}
         </span>
       </td>
-      <td className="px-3 py-2 text-xs font-mono text-slate-300">{trade.open_ratio.toFixed(4)}</td>
+      {/* Entrada: ratio último + exec + slippage */}
+      <td className="px-3 py-2 text-xs">
+        <div className="flex flex-col gap-0.5">
+          <ExecRatioBadge execRatio={trade.open_exec_ratio} lastRatio={trade.open_ratio} />
+          {hasExecOpen && (
+            <span className="text-slate-500 font-mono text-[10px]">
+              último: {trade.open_ratio.toFixed(4)}
+            </span>
+          )}
+        </div>
+      </td>
       <td className="px-3 py-2 text-xs font-mono text-slate-400">
         {trade.open_z_score >= 0 ? '+' : ''}{trade.open_z_score.toFixed(2)}σ
       </td>
+      {/* Slippage entrada */}
+      <td className="px-3 py-2 text-xs">
+        <SlippageBadge slippage={trade.open_slippage_pct} />
+      </td>
       <td className="px-3 py-2 text-xs text-slate-400">{fmt(trade.opened_at)}</td>
-      <td className="px-3 py-2 text-xs font-mono text-slate-300">
-        {trade.close_ratio != null ? trade.close_ratio.toFixed(4) : '—'}
+      {/* Salida: ratio último + exec + slippage */}
+      <td className="px-3 py-2 text-xs">
+        {trade.close_ratio != null ? (
+          <div className="flex flex-col gap-0.5">
+            <ExecRatioBadge execRatio={trade.close_exec_ratio} lastRatio={trade.close_ratio} />
+            {hasExecClose && (
+              <span className="text-slate-500 font-mono text-[10px]">
+                último: {trade.close_ratio.toFixed(4)}
+              </span>
+            )}
+          </div>
+        ) : '—'}
+      </td>
+      {/* Slippage salida */}
+      <td className="px-3 py-2 text-xs">
+        {!isOpen && trade.close_slippage_pct != null
+          ? <SlippageBadge slippage={trade.close_slippage_pct} />
+          : <span className="text-slate-600">—</span>
+        }
       </td>
       <td className="px-3 py-2 text-xs text-slate-400">
         {isOpen ? (
@@ -171,11 +226,20 @@ export default function PaperTradeLog() {
         </div>
       )}
 
+      {/* Metodología */}
+      <div className="rounded-lg bg-slate-800/50 border border-slate-700/60 px-4 py-3 text-xs text-slate-400 space-y-1">
+        <p className="text-slate-300 font-medium">Metodología de ejecución</p>
+        <p>• <span className="text-slate-200">Ratio entrada/salida</span>: precio ejecutado usando <span className="text-yellow-300">puntas reales (bid/ask)</span> de IOL, no el último precio.</p>
+        <p>• <span className="text-slate-200">Slippage</span>: diferencia entre el último precio y el precio de punta. Negativo = pagamos más / recibimos menos que el último.</p>
+        <p>• <span className="text-slate-200">P&L calculado sobre exec ratios</span>. Si puntas no disponibles, se usa último precio como fallback.</p>
+        <p className="text-slate-500">Señal de apertura: |z| ≥ {'>'}1σ · Señal de cierre: |z| ≤ 0.5σ · Nocional: ARS 100.000 por trade.</p>
+      </div>
+
       {allEmpty && (
         <div className="text-center py-10 text-slate-500 text-sm">
           <p>Sin trades registrados aún.</p>
           <p className="text-xs mt-1 text-slate-600">
-            Los trades se abren automáticamente cuando el z-score supera {'>'}2σ y se cierran al volver a ±0.5σ.
+            Los trades se abren automáticamente cuando el z-score supera {'>'}1σ y se cierran al volver a ±0.5σ.
           </p>
         </div>
       )}
@@ -210,11 +274,24 @@ export default function PaperTradeLog() {
 }
 
 function TradeTable({ trades, isOpen }: { trades: PaperTrade[]; isOpen: boolean }) {
+  const headers = [
+    'Par',
+    'Dirección',
+    'Entrada (exec)',
+    'Z entrada',
+    'Slip. entrada',
+    'Apertura',
+    'Salida (exec)',
+    'Slip. salida',
+    isOpen ? 'Estado' : 'Cierre',
+    'P&L bruto',
+    'P&L neto (ARS)',
+  ];
   return (
     <table className="w-full text-left">
       <thead>
         <tr className="bg-slate-800/80">
-          {['Par', 'Dirección', 'Ratio entrada', 'Z entrada', 'Apertura', 'Ratio salida', isOpen ? 'Estado' : 'Cierre', 'P&L bruto', 'P&L neto (ARS)'].map(h => (
+          {headers.map(h => (
             <th key={h} className="px-3 py-2 text-xs text-slate-500 font-medium whitespace-nowrap">{h}</th>
           ))}
         </tr>

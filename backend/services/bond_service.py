@@ -266,6 +266,10 @@ class BondMonitor:
                 state.latest = state.history[-1]
                 state.stats = _compute_stats(state.history, ROLLING_WINDOW)
                 logger.info(f"Bond monitor: loaded {len(state.history)} points for {pair_id}")
+        # Warm paper trades from disk/GitHub
+        trades = _load_paper_trades()
+        if trades:
+            logger.info(f"Bond monitor: restored {len(trades)} paper trades ({sum(1 for t in trades if t.status == 'open')} open)")
 
     # ------------------------------------------------------------------
     # Price fetching
@@ -325,6 +329,10 @@ class BondMonitor:
                 local_price=local_q.price,
                 ny_price=ny_q.price,
                 ratio=ratio,
+                local_bid=local_q.bid,
+                local_ask=local_q.ask,
+                ny_bid=ny_q.bid,
+                ny_ask=ny_q.ask,
             )
 
             state.history.append(snapshot)
@@ -366,6 +374,10 @@ class BondMonitor:
                     ratio=ratio,
                     z_score=stats.z_score,
                     direction=direction,
+                    local_bid=local_q.bid,
+                    local_ask=local_q.ask,
+                    ny_bid=ny_q.bid,
+                    ny_ask=ny_q.ask,
                 )
 
             self._save_history(pair.id, state.history)
@@ -598,23 +610,55 @@ async def execute_order(req: BondOrderRequest) -> BondOrderResponse:
 # ---------------------------------------------------------------------------
 
 def _load_paper_trades() -> list[PaperTrade]:
-    if not PAPER_TRADES_FILE.exists():
-        return []
-    try:
-        raw = json.loads(PAPER_TRADES_FILE.read_text())
-        return [PaperTrade(**item) for item in raw]
-    except Exception as e:
-        logger.warning(f"Could not load paper trades: {e}")
-        return []
+    # 1. Intentar leer del disco local
+    if PAPER_TRADES_FILE.exists():
+        try:
+            raw = json.loads(PAPER_TRADES_FILE.read_text())
+            if raw:
+                return [PaperTrade(**item) for item in raw]
+        except Exception as e:
+            logger.warning(f"Could not load paper trades from disk: {e}")
+    # 2. Disco vacío o inexistente — intentar desde GitHub
+    raw_gh = github_storage.pull("paper_trades.json")
+    if raw_gh:
+        try:
+            trades = [PaperTrade(**item) for item in raw_gh]
+            # Persistir localmente para no volver a pedir a GitHub
+            try:
+                data = [t.model_dump(mode="json") for t in trades]
+                PAPER_TRADES_FILE.write_text(json.dumps(data, default=str))
+            except Exception:
+                pass
+            logger.info(f"[PaperTrade] Restored {len(trades)} trades from GitHub")
+            return trades
+        except Exception as e:
+            logger.warning(f"Could not parse paper trades from GitHub: {e}")
+    return []
 
+
+_paper_save_counter: int = 0
 
 def _save_paper_trades(trades: list[PaperTrade]) -> None:
+    """Guarda trades en disco local Y pushea a GitHub cada 2 saves (≈ cada cierre de trade)."""
+    global _paper_save_counter
     trades = trades[-MAX_PAPER_TRADES:]
+    data = [t.model_dump(mode="json") for t in trades]
+    # Siempre guardar en disco local
     try:
-        data = [t.model_dump(mode="json") for t in trades]
         PAPER_TRADES_FILE.write_text(json.dumps(data, default=str))
     except Exception as e:
-        logger.warning(f"Could not save paper trades: {e}")
+        logger.warning(f"Could not save paper trades to disk: {e}")
+    # Push a GitHub en el primer save y luego cada 2 (cada apertura o cierre de trade)
+    _paper_save_counter += 1
+    if _paper_save_counter == 1 or _paper_save_counter % 2 == 0:
+        import threading
+        t = threading.Thread(
+            target=github_storage.push,
+            args=("paper_trades.json", data),
+            daemon=True,
+        )
+        t.start()
+        logger.info(f"[PaperTrade] Pushing {len(trades)} trades to GitHub...")
 
 
 def _compute_paper_stats(closed: list[PaperTrade]) -> Optional[PaperTradeStats]:
@@ -649,6 +693,96 @@ def _compute_paper_stats(closed: list[PaperTrade]) -> Optional[PaperTradeStats]:
 # Paper trading — core logic (called on every refresh)
 # ---------------------------------------------------------------------------
 
+def _compute_exec_ratio_from_quotes(
+    direction: str,
+    ratio: float,
+    local_bid: Optional[float], local_ask: Optional[float],
+    ny_bid: Optional[float], ny_ask: Optional[float],
+    is_open: bool,
+) -> tuple[float, float]:
+    """
+    Compute realistic execution ratio from bid/ask quotes without needing
+    individual leg prices (only ratio = local/ny is available here).
+
+    Logic:
+      At OPEN:
+        LOCAL_CHEAP → buy local at ask, sell NY at bid → exec_ratio = local_ask / ny_bid
+        NY_CHEAP    → buy NY at ask, sell local at bid → exec_ratio = local_bid / ny_ask
+      At CLOSE (reverse legs):
+        LOCAL_CHEAP → sell local at bid, buy NY at ask → exec_ratio = local_bid / ny_ask
+        NY_CHEAP    → sell NY at bid, buy local at ask → exec_ratio = local_ask / ny_bid
+
+    Falls back to last-price ratio when puntas are unavailable.
+    Returns (exec_ratio, slippage_pct).
+    """
+    if direction == "LOCAL_CHEAP":
+        if is_open:
+            num = local_ask
+            den = ny_bid
+        else:
+            num = local_bid
+            den = ny_ask
+    else:  # NY_CHEAP
+        if is_open:
+            num = local_bid
+            den = ny_ask
+        else:
+            num = local_ask
+            den = ny_bid
+
+    if num and den and den != 0:
+        exec_ratio = num / den
+    else:
+        exec_ratio = ratio  # fallback to last price
+
+    slippage = (exec_ratio - ratio) / ratio if ratio else 0.0
+    return round(exec_ratio, 6), round(slippage, 6)
+
+
+def _compute_exec_ratio(
+    direction: str,
+    local_price: float, ny_price: float,
+    local_bid: Optional[float], local_ask: Optional[float],
+    ny_bid: Optional[float], ny_ask: Optional[float],
+    is_open: bool,
+) -> tuple[float, float]:
+    """
+    Compute realistic execution ratio using bid/ask puntas.
+
+    At OPEN:
+      LOCAL_CHEAP → buy local (pay ask_local) / sell NY (receive bid_ny)
+      NY_CHEAP    → buy NY   (pay ask_ny)    / sell local (receive bid_local)
+
+    At CLOSE (reverse):
+      LOCAL_CHEAP → sell local (receive bid_local) / buy NY (pay ask_ny)
+      NY_CHEAP    → sell NY   (receive bid_ny)     / buy local (pay ask_local)
+
+    Returns (exec_ratio, slippage_pct).
+    slippage_pct = (exec_ratio - last_ratio) / last_ratio
+      — negative means we got a worse price than the last-trade ratio.
+    """
+    last_ratio = local_price / ny_price if ny_price else 0.0
+
+    if direction == "LOCAL_CHEAP":
+        if is_open:
+            exec_local = local_ask if local_ask else local_price
+            exec_ny    = ny_bid    if ny_bid    else ny_price
+        else:
+            exec_local = local_bid if local_bid else local_price
+            exec_ny    = ny_ask    if ny_ask    else ny_price
+    else:  # NY_CHEAP
+        if is_open:
+            exec_local = local_bid if local_bid else local_price
+            exec_ny    = ny_ask    if ny_ask    else ny_price
+        else:
+            exec_local = local_ask if local_ask else local_price
+            exec_ny    = ny_bid    if ny_bid    else ny_price
+
+    exec_ratio = exec_local / exec_ny if exec_ny else last_ratio
+    slippage = (exec_ratio - last_ratio) / last_ratio if last_ratio else 0.0
+    return round(exec_ratio, 6), round(slippage, 6)
+
+
 def process_paper_trades(
     pair_id: str,
     pair_label: str,
@@ -656,6 +790,10 @@ def process_paper_trades(
     z_score: float,
     direction: str,
     close_reason: str = "convergence",
+    local_bid: Optional[float] = None,
+    local_ask: Optional[float] = None,
+    ny_bid: Optional[float] = None,
+    ny_ask: Optional[float] = None,
 ) -> None:
     """
     Called after each price refresh for a pair.
@@ -663,6 +801,8 @@ def process_paper_trades(
     - If open trade exists and |z| <= PAPER_CLOSE_Z_THRESHOLD → close it with P&L.
     Only one open trade per pair at a time.
     """
+    # Reconstruct individual leg prices from ratio and ny_price (approximate).
+    # We don't have them individually here, so we pass bid/ask directly.
     trades = _load_paper_trades()
 
     open_trade = next(
@@ -672,6 +812,17 @@ def process_paper_trades(
     if open_trade is None:
         # Check if we should open a new trade
         if abs(z_score) >= ALERT_Z_THRESHOLD:
+            # Compute exec ratio using bid/ask
+            # We need local_price and ny_price; derive from ratio approximation.
+            # Ratio = local/ny; we don't have individual prices here so
+            # use bid/ask directly to build the exec ratio.
+            exec_ratio, slippage = _compute_exec_ratio_from_quotes(
+                direction=direction,
+                ratio=ratio,
+                local_bid=local_bid, local_ask=local_ask,
+                ny_bid=ny_bid, ny_ask=ny_ask,
+                is_open=True,
+            )
             new_trade = PaperTrade(
                 id=str(uuid.uuid4()),
                 pair_id=pair_id,
@@ -683,16 +834,26 @@ def process_paper_trades(
                 notional_ars=PAPER_TRADE_NOTIONAL,
                 roundtrip_commission_pct=PAPER_TRADE_COMMISSION,
                 status="open",
+                open_local_bid=local_bid,
+                open_local_ask=local_ask,
+                open_ny_bid=ny_bid,
+                open_ny_ask=ny_ask,
+                open_exec_ratio=exec_ratio,
+                open_slippage_pct=slippage,
             )
             trades.append(new_trade)
             logger.info(
-                f"[PaperTrade] OPEN {pair_id}: ratio={ratio:.4f} z={z_score:.2f}σ "
-                f"direction={direction}"
+                f"[PaperTrade] OPEN {pair_id}: ratio={ratio:.4f} exec={exec_ratio:.4f} "
+                f"slippage={slippage*100:+.3f}% z={z_score:.2f}σ direction={direction}"
             )
     else:
         # Check if spread has converged enough to close
         if abs(z_score) <= PAPER_CLOSE_Z_THRESHOLD:
-            _close_paper_trade(open_trade, ratio, z_score, close_reason)
+            _close_paper_trade(
+                open_trade, ratio, z_score, close_reason,
+                local_bid=local_bid, local_ask=local_ask,
+                ny_bid=ny_bid, ny_ask=ny_ask,
+            )
             logger.info(
                 f"[PaperTrade] CLOSE {pair_id}: ratio={ratio:.4f} z={z_score:.2f}σ "
                 f"reason={close_reason} net={open_trade.net_pnl_pct}"
@@ -706,6 +867,10 @@ def _close_paper_trade(
     close_ratio: float,
     close_z_score: float,
     close_reason: str,
+    local_bid: Optional[float] = None,
+    local_ask: Optional[float] = None,
+    ny_bid: Optional[float] = None,
+    ny_ask: Optional[float] = None,
 ) -> None:
     """Mutates trade in-place: computes P&L and marks as closed."""
     trade.closed_at = datetime.now(timezone.utc)
@@ -714,14 +879,44 @@ def _close_paper_trade(
     trade.close_reason = close_reason
     trade.status = "closed"
 
+    # Store close-side puntas
+    trade.close_local_bid = local_bid
+    trade.close_local_ask = local_ask
+    trade.close_ny_bid = ny_bid
+    trade.close_ny_ask = ny_ask
+
+    # Compute close exec ratio (reverse direction at close)
+    close_exec_ratio, close_slippage = _compute_exec_ratio_from_quotes(
+        direction=trade.direction,
+        ratio=close_ratio,
+        local_bid=local_bid, local_ask=local_ask,
+        ny_bid=ny_bid, ny_ask=ny_ask,
+        is_open=False,
+    )
+    trade.close_exec_ratio = close_exec_ratio
+    trade.close_slippage_pct = close_slippage
+
+    # Use exec ratios when available for P&L (more realistic)
+    open_r  = trade.open_exec_ratio  if trade.open_exec_ratio  is not None else trade.open_ratio
+    close_r = trade.close_exec_ratio if trade.close_exec_ratio is not None else close_ratio
+
     # P&L: if LOCAL_CHEAP we bought local/sold NY at open, reversed at close
     # The gain is how much the ratio moved back toward mean
     if trade.direction == "LOCAL_CHEAP":
-        # We bought the cheaper leg; gain if ratio increased (local appreciated vs NY)
-        raw_pnl = (close_ratio - trade.open_ratio) / trade.open_ratio
+        # Opened: local_ask / ny_bid (high ratio if local cheap)
+        # Closed:  local_bid / ny_ask (should be lower, meaning local came back up vs NY)
+        # P&L > 0 when close_exec < open_exec (ratio converged down) — WRONG direction.
+        # Actually LOCAL_CHEAP means ratio was LOW (local undervalued).
+        # open_exec_ratio = local_ask/ny_bid  (we pay more for local than last price)
+        # close_exec_ratio = local_bid/ny_ask (we receive less for local than last price)
+        # Gain if close_r > open_r (ratio went back up = local recovered vs NY)
+        raw_pnl = (close_r - open_r) / open_r
     else:
-        # NY_CHEAP: bought NY leg; gain if ratio decreased (NY appreciated vs local)
-        raw_pnl = (trade.open_ratio - close_ratio) / trade.open_ratio
+        # NY_CHEAP: ratio was HIGH (NY undervalued, local overvalued)
+        # open_exec_ratio = local_bid/ny_ask (we receive less for local, pay more for NY)
+        # close_exec_ratio = local_ask/ny_bid
+        # Gain if close_r < open_r (ratio went back down = NY recovered vs local)
+        raw_pnl = (open_r - close_r) / open_r
 
     gross_pct = raw_pnl
     net_pct = gross_pct - trade.roundtrip_commission_pct

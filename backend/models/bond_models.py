@@ -60,7 +60,12 @@ class RatioSnapshot(BaseModel):
     timestamp: datetime
     local_price: float
     ny_price: float
-    ratio: float                # local / ny
+    ratio: float                # local / ny  (using last prices)
+    # Bid/ask puntas (optional — available when IOL returns them)
+    local_bid: Optional[float] = None
+    local_ask: Optional[float] = None
+    ny_bid: Optional[float] = None
+    ny_ask: Optional[float] = None
     # Rolling Bollinger stats at this point — only populated in history endpoint, not stored on disk
     mean: Optional[float] = None
     upper2: Optional[float] = None   # mean + 2σ
@@ -208,7 +213,18 @@ class PaperTrade(BaseModel):
       - CLOSE: abs(z_score) <= PAPER_CLOSE_Z_THRESHOLD (0.5σ)
 
     P&L is computed on a fixed notional (PAPER_TRADE_NOTIONAL, default ARS 100.000).
-    gross_pnl_pct = |ratio_close - ratio_open| / ratio_open
+
+    Execution prices (bid/ask):
+      LOCAL_CHEAP: we BUY local (use local ask) + SELL NY (use NY bid)
+      NY_CHEAP:    we BUY NY   (use NY ask)    + SELL local (use local bid)
+      On close:    reverse — buy at ask, sell at bid of each leg.
+
+    open_exec_ratio  = price we actually paid (ask/bid), vs open_ratio (last)
+    close_exec_ratio = price we actually got  (bid/ask), vs close_ratio (last)
+    open_slippage_pct  = (open_exec_ratio  - open_ratio)  / open_ratio   (negative = paid more)
+    close_slippage_pct = (close_exec_ratio - close_ratio) / close_ratio  (negative = received less)
+
+    gross_pnl_pct = |exec_ratio_close - exec_ratio_open| / exec_ratio_open
     net_pnl_pct   = gross_pnl_pct - roundtrip_commission
     gross_pnl_ars = gross_pnl_pct * notional
     net_pnl_ars   = net_pnl_pct   * notional
@@ -219,17 +235,33 @@ class PaperTrade(BaseModel):
 
     # Entry
     opened_at: datetime
-    open_ratio: float
+    open_ratio: float                   # last-price ratio at signal time
     open_z_score: float
     direction: str                      # "LOCAL_CHEAP" | "NY_CHEAP"
 
+    # Entry execution prices (bid/ask puntas)
+    open_local_bid: Optional[float] = None
+    open_local_ask: Optional[float] = None
+    open_ny_bid: Optional[float] = None
+    open_ny_ask: Optional[float] = None
+    open_exec_ratio: Optional[float] = None   # ratio using realistic bid/ask
+    open_slippage_pct: Optional[float] = None # (exec - last) / last
+
     # Exit (None while trade is open)
     closed_at: Optional[datetime] = None
-    close_ratio: Optional[float] = None
+    close_ratio: Optional[float] = None       # last-price ratio at close
     close_z_score: Optional[float] = None
     close_reason: Optional[str] = None  # "convergence" | "eod_close" | "manual"
 
-    # P&L (populated on close)
+    # Exit execution prices
+    close_local_bid: Optional[float] = None
+    close_local_ask: Optional[float] = None
+    close_ny_bid: Optional[float] = None
+    close_ny_ask: Optional[float] = None
+    close_exec_ratio: Optional[float] = None  # ratio using realistic bid/ask
+    close_slippage_pct: Optional[float] = None
+
+    # P&L (populated on close) — computed on exec ratios when available, else last prices
     notional_ars: float = 100_000.0
     roundtrip_commission_pct: float = 0.005
     gross_pnl_pct: Optional[float] = None

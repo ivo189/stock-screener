@@ -152,14 +152,32 @@ export interface PaperTrade {
   id: string;
   pair_id: string;
   pair_label: string;
+
+  // Entry — last price + puntas
   opened_at: string;
   open_ratio: number;
   open_z_score: number;
   direction: PaperTradeDirection;
+  open_local_bid: number | null;
+  open_local_ask: number | null;
+  open_ny_bid: number | null;
+  open_ny_ask: number | null;
+  open_exec_ratio: number | null;    // ratio usando bid/ask reales
+  open_slippage_pct: number | null;  // (exec - last) / last
+
+  // Exit — last price + puntas
   closed_at: string | null;
   close_ratio: number | null;
   close_z_score: number | null;
   close_reason: PaperCloseReason | null;
+  close_local_bid: number | null;
+  close_local_ask: number | null;
+  close_ny_bid: number | null;
+  close_ny_ask: number | null;
+  close_exec_ratio: number | null;
+  close_slippage_pct: number | null;
+
+  // P&L (calculado sobre exec ratios cuando disponibles)
   notional_ars: number;
   roundtrip_commission_pct: number;
   gross_pnl_pct: number | null;
