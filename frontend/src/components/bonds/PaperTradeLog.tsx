@@ -3,9 +3,10 @@
  * closed trades with realised P&L, plus a portfolio summary panel.
  * Trades are opened/closed automatically by the backend on each refresh.
  */
-import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, BarChart2, RefreshCw, Layers } from 'lucide-react';
-import { fetchPaperTrades } from '../../api/bonds';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, BarChart2, RefreshCw, Layers, CloudUpload } from 'lucide-react';
+import { fetchPaperTrades, flushPaperTradesToGithub } from '../../api/bonds';
 import type { PaperTrade, PaperTradeStats } from '../../types/bonds';
 
 // ---------------------------------------------------------------------------
@@ -385,11 +386,27 @@ interface Props {
 }
 
 export default function PaperTradeLog({ currentRatios = {} }: Props) {
+  const queryClient = useQueryClient();
+  const [flushMsg, setFlushMsg] = useState<string | null>(null);
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['paperTrades'],
     queryFn: () => fetchPaperTrades(200),
     refetchInterval: 5 * 60 * 1000,
     refetchIntervalInBackground: true,
+  });
+
+  const flushMutation = useMutation({
+    mutationFn: flushPaperTradesToGithub,
+    onSuccess: (result) => {
+      setFlushMsg(result.message);
+      queryClient.invalidateQueries({ queryKey: ['paperTrades'] });
+      setTimeout(() => setFlushMsg(null), 5000);
+    },
+    onError: () => {
+      setFlushMsg('Error al sincronizar con GitHub.');
+      setTimeout(() => setFlushMsg(null), 5000);
+    },
   });
 
   if (isLoading) {
@@ -415,11 +432,27 @@ export default function PaperTradeLog({ currentRatios = {} }: Props) {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <BarChart2 size={14} className="text-indigo-400" />
-        <h2 className="text-slate-300 text-xs font-medium uppercase tracking-wider">
-          Paper Trading — Registro automático
-        </h2>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <BarChart2 size={14} className="text-indigo-400" />
+          <h2 className="text-slate-300 text-xs font-medium uppercase tracking-wider">
+            Paper Trading — Registro automático
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {flushMsg && (
+            <span className="text-xs text-emerald-400">{flushMsg}</span>
+          )}
+          <button
+            onClick={() => flushMutation.mutate()}
+            disabled={flushMutation.isPending}
+            title="Forzar sincronización inmediata de trades a GitHub"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-slate-300"
+          >
+            <CloudUpload size={11} className={flushMutation.isPending ? 'animate-pulse' : ''} />
+            <span>Sync GitHub</span>
+          </button>
+        </div>
       </div>
 
       {/* Portfolio summary — always visible */}

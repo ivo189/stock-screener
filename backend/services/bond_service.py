@@ -610,20 +610,36 @@ async def execute_order(req: BondOrderRequest) -> BondOrderResponse:
 # ---------------------------------------------------------------------------
 
 def _load_paper_trades() -> list[PaperTrade]:
+    """
+    Load paper trades with two-tier fallback:
+      1. Local disk  → fast, always tried first
+      2. GitHub      → only when disk is empty/missing
+
+    Key: `[]` from GitHub means "placeholder, no trades yet" — treated
+    identically to "not found" so we never wipe a non-empty in-memory state.
+    The first real save will overwrite GitHub with the actual list.
+    """
     # 1. Intentar leer del disco local
     if PAPER_TRADES_FILE.exists():
         try:
             raw = json.loads(PAPER_TRADES_FILE.read_text())
-            if raw:
-                return [PaperTrade(**item) for item in raw]
+            if raw:  # non-empty list on disk → use it
+                trades = [PaperTrade(**item) for item in raw]
+                logger.info(f"[PaperTrade] Loaded {len(trades)} trades from disk")
+                return trades
+            # raw == [] : disk empty, fall through to GitHub
         except Exception as e:
             logger.warning(f"Could not load paper trades from disk: {e}")
-    # 2. Disco vacío o inexistente — intentar desde GitHub
+
+    # 2. Disco vacío/inexistente → intentar GitHub
     raw_gh = github_storage.pull("paper_trades.json")
-    if raw_gh:
+    # None  → GitHub disabled or file not found (first run)
+    # []    → file exists but empty placeholder (also first run effectively)
+    # [...]  → real trades to restore
+    if raw_gh:  # truthy only for non-empty list
         try:
             trades = [PaperTrade(**item) for item in raw_gh]
-            # Persistir localmente para no volver a pedir a GitHub
+            # Write to disk so next startup is instant (no GitHub call)
             try:
                 data = [t.model_dump(mode="json") for t in trades]
                 PAPER_TRADES_FILE.write_text(json.dumps(data, default=str))
@@ -633,32 +649,33 @@ def _load_paper_trades() -> list[PaperTrade]:
             return trades
         except Exception as e:
             logger.warning(f"Could not parse paper trades from GitHub: {e}")
+
+    logger.info("[PaperTrade] No trades on disk or GitHub — starting fresh")
     return []
 
 
-_paper_save_counter: int = 0
-
 def _save_paper_trades(trades: list[PaperTrade]) -> None:
-    """Guarda trades en disco local Y pushea a GitHub cada 2 saves (≈ cada cierre de trade)."""
-    global _paper_save_counter
+    """
+    Guarda trades en disco local Y pushea a GitHub en CADA save.
+    Esto garantiza que cada apertura o cierre de trade queda persistido
+    inmediatamente, sin perder datos ante reinicios del servidor.
+    """
+    import threading
     trades = trades[-MAX_PAPER_TRADES:]
     data = [t.model_dump(mode="json") for t in trades]
-    # Siempre guardar en disco local
+    # 1. Disco local — siempre, síncrono
     try:
         PAPER_TRADES_FILE.write_text(json.dumps(data, default=str))
     except Exception as e:
         logger.warning(f"Could not save paper trades to disk: {e}")
-    # Push a GitHub en el primer save y luego cada 2 (cada apertura o cierre de trade)
-    _paper_save_counter += 1
-    if _paper_save_counter == 1 or _paper_save_counter % 2 == 0:
-        import threading
-        t = threading.Thread(
-            target=github_storage.push,
-            args=("paper_trades.json", data),
-            daemon=True,
-        )
-        t.start()
-        logger.info(f"[PaperTrade] Pushing {len(trades)} trades to GitHub...")
+    # 2. GitHub — siempre, en background thread (no bloquea el refresh)
+    t = threading.Thread(
+        target=github_storage.push,
+        args=("paper_trades.json", data),
+        daemon=True,
+    )
+    t.start()
+    logger.info(f"[PaperTrade] Saved {len(trades)} trades to disk + queued GitHub push")
 
 
 def _compute_paper_stats(closed: list[PaperTrade]) -> Optional[PaperTradeStats]:

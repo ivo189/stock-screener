@@ -36,3 +36,16 @@ export async function fetchPaperTrades(limit = 100): Promise<PaperTradeResponse>
   const res = await client.get<PaperTradeResponse>('/bonds/paper-trades', { params: { limit } });
   return res.data;
 }
+
+export interface FlushResult {
+  status: string;
+  message: string;
+  total: number;
+  open: number;
+  closed: number;
+}
+
+export async function flushPaperTradesToGithub(): Promise<FlushResult> {
+  const res = await client.post<FlushResult>('/bonds/paper-trades/flush');
+  return res.data;
+}

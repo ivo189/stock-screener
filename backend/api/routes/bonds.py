@@ -2,11 +2,12 @@
 Bond arbitrage monitor — REST API routes.
 
 Endpoints:
-  GET  /api/bonds/status            — full status: all pairs, latest ratios, alerts
-  POST /api/bonds/refresh           — trigger immediate data refresh
-  GET  /api/bonds/{pair_id}/history — historical ratio series for one pair
-  POST /api/bonds/order             — place a bond order (sandbox by default)
-  GET  /api/bonds/paper-trades      — paper trade log + stats
+  GET  /api/bonds/status                  — full status: all pairs, latest ratios, alerts
+  POST /api/bonds/refresh                 — trigger immediate data refresh
+  GET  /api/bonds/{pair_id}/history       — historical ratio series for one pair
+  POST /api/bonds/order                   — place a bond order (sandbox by default)
+  GET  /api/bonds/paper-trades            — paper trade log + stats
+  POST /api/bonds/paper-trades/flush      — force immediate GitHub sync of paper trades
 """
 import asyncio
 import logging
@@ -22,7 +23,7 @@ from models.bond_models import (
     OrderLogResponse,
     PaperTradeResponse,
 )
-from services.bond_service import bond_monitor, execute_order, get_order_log, get_paper_trades, BONDS_CACHE_DIR
+from services.bond_service import bond_monitor, execute_order, get_order_log, get_paper_trades, _load_paper_trades, _save_paper_trades, BONDS_CACHE_DIR
 import services.github_storage as github_storage
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,27 @@ async def get_paper_trade_log(
     Trades are opened automatically when z-score >= threshold and closed at ±0.5σ.
     """
     return get_paper_trades(limit=limit)
+
+
+@router.post("/paper-trades/flush")
+async def flush_paper_trades_to_github():
+    """
+    Force an immediate GitHub sync of the current in-memory paper trades.
+    Useful before planned server restarts or to verify data is safely persisted.
+    Returns the number of trades flushed.
+    """
+    trades = _load_paper_trades()
+    _save_paper_trades(trades)
+    open_count = sum(1 for t in trades if t.status == "open")
+    closed_count = sum(1 for t in trades if t.status == "closed")
+    logger.info(f"Manual flush: {len(trades)} trades → GitHub ({open_count} open, {closed_count} closed)")
+    return {
+        "status": "ok",
+        "message": f"Sincronizados {len(trades)} trades a GitHub ({open_count} abiertos, {closed_count} cerrados).",
+        "total": len(trades),
+        "open": open_count,
+        "closed": closed_count,
+    }
 
 
 @router.get("/debug/storage")
