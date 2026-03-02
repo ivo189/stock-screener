@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Navbar from './components/layout/Navbar';
 import ScreenerPage from './pages/ScreenerPage';
 import BondMonitorPage from './pages/BondMonitorPage';
+import RatesPage from './pages/RatesPage';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import client from './api/client';
 
@@ -25,7 +26,7 @@ function KeepAlive() {
   return null;
 }
 
-export type AppTab = 'screener' | 'bonds';
+export type AppTab = 'screener' | 'bonds' | 'rates';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('screener');
@@ -36,7 +37,13 @@ export default function App() {
         <KeepAlive />
         <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
           <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
-          {activeTab === 'screener' ? <ScreenerPage /> : <BondMonitorPage />}
+          {activeTab === 'screener' ? (
+            <ScreenerPage />
+          ) : activeTab === 'bonds' ? (
+            <BondMonitorPage />
+          ) : (
+            <RatesPage />
+          )}
         </div>
       </QueryClientProvider>
     </ErrorBoundary>

@@ -17,6 +17,7 @@ from api.routes.screener import router as screener_router
 from api.routes.stocks import router as stocks_router
 from api.routes.portfolio import router as portfolio_router
 from api.routes.bonds import router as bonds_router
+from api.routes.rates import router as rates_router
 from core.cache import stock_cache
 from core.scheduler import start_scheduler, run_full_refresh
 from services.bond_service import bond_monitor
@@ -84,6 +85,7 @@ app.include_router(screener_router)
 app.include_router(stocks_router)
 app.include_router(portfolio_router)
 app.include_router(bonds_router)
+app.include_router(rates_router)
 
 
 @app.get("/api/health")
