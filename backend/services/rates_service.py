@@ -17,7 +17,7 @@ Letra TNA formula (discount instrument):
 """
 import logging
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 
 from services.iol_client import get_serie_historica, get_cotizacion
 
@@ -34,7 +34,7 @@ CAUCION_SYMBOLS_FALLBACK = [
 ]
 
 
-def _tna_from_caucion_price(price: float, days: int = 1) -> float | None:
+def _tna_from_caucion_price(price: float, days: int = 1) -> Optional[float]:
     """
     Convert a caución closing price / rate to TNA%.
     IOL returns caución prices in different ways depending on the endpoint:
@@ -51,7 +51,7 @@ def _tna_from_caucion_price(price: float, days: int = 1) -> float | None:
     return round(float(price), 2)
 
 
-def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date) -> float | None:
+def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date) -> Optional[float]:
     """
     Compute TNA for a discount letra given its closing price and maturity date.
     TNA = ((100 / precio) ^ (365 / dias) - 1) * 100
@@ -66,7 +66,7 @@ def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date) ->
         return None
 
 
-def _parse_vencimiento(simbolo: str) -> date | None:
+def _parse_vencimiento(simbolo: str) -> Optional[date]:
     """
     Attempt to parse the maturity date from the letra symbol.
     Common formats used by BYMA/IOL:
@@ -119,7 +119,7 @@ def _parse_vencimiento(simbolo: str) -> date | None:
     return None
 
 
-def _normalize_series(raw: list[dict], symbol: str, symbol_type: str, vencimiento: date | None) -> list[dict]:
+def _normalize_series(raw: list[dict], symbol: str, symbol_type: str, vencimiento: Optional[date]) -> list[dict]:
     """
     Convert a raw IOL historical series to a list of {date, tna} points.
     symbol_type: 'caucion' | 'letra'

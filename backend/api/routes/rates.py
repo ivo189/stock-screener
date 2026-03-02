@@ -7,6 +7,7 @@ Endpoints:
 """
 import logging
 from datetime import date, timedelta
+from typing import Optional, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -28,14 +29,14 @@ class RatePoint(BaseModel):
 
 
 class LetraResult(BaseModel):
-    data: list[RatePoint]
-    vencimiento: str | None     # ISO date string or null
-    error: str | None           # null if OK, message if failed
+    data: List[RatePoint]
+    vencimiento: Optional[str]     # ISO date string or null
+    error: Optional[str]           # null if OK, message if failed
 
 
 class RatesHistoryResponse(BaseModel):
-    caucion_1d: list[RatePoint]
-    letras: dict[str, LetraResult]
+    caucion_1d: List[RatePoint]
+    letras: Dict[str, LetraResult]
     fecha_desde: str
     fecha_hasta: str
 
