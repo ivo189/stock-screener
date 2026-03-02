@@ -1,4 +1,4 @@
-import { TrendingUp, RefreshCw, Activity } from 'lucide-react';
+import { TrendingUp, RefreshCw, Activity, BarChart2 } from 'lucide-react';
 import { useUniverseStats, useRefreshTrigger } from '../../hooks/useScreener';
 import type { AppTab } from '../../App';
 
@@ -27,6 +27,7 @@ interface Props {
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'screener', label: 'Screener' },
   { id: 'bonds', label: 'Bonos AR' },
+  { id: 'rates', label: 'Tasas ARS' },
 ];
 
 export default function Navbar({ activeTab, onTabChange }: Props) {
@@ -64,6 +65,7 @@ export default function Navbar({ activeTab, onTabChange }: Props) {
             }`}
           >
             {tab.id === 'bonds' && <Activity size={13} />}
+            {tab.id === 'rates' && <BarChart2 size={13} />}
             {tab.label}
           </button>
         ))}
