@@ -2,6 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+# rates router added — force redeploy
 
 from dotenv import load_dotenv
 
