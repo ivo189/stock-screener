@@ -1,248 +1,233 @@
 """
-Rates comparison service: Caución 1D (tomadora) TNA vs Letras del Tesoro TNA.
+Rates comparison service: Caución 1D TNA vs Letras del Tesoro TNA.
 
-Caución TNA formula:
-  The IOL historical series for "CAUCIONES" returns a daily closing rate expressed
-  as a daily TNA (already annualised by IOL in some endpoints) or as a daily effective
-  rate. We normalise everything to TNA (Tasa Nominal Anual, base 365).
+Data strategy:
+  - Caución: served from persistent store (seeded historically + updated daily by scheduler)
+  - Letras: served from persistent store (captured daily via IOL current price + TNA formula)
+  - IOL serie historica is NOT used (letras return HTTP 500, caución returns 404)
 
-  If IOL returns the caución as a daily percentage (e.g. 0.12% per day):
-    TNA = tasa_diaria_pct * 365
-
-  If IOL returns it already as TNA (annualised), we use it directly.
-
-Letra TNA formula (discount instrument):
-  TNA = ((VN / Precio) ^ (365 / dias_al_vencimiento) - 1) * 100
-  where VN = 100 (par value), Precio = closing price, dias = days to maturity.
+TNA formulas:
+  Caución: already stored as TNA% (captured from IOL current price at market close)
+  Letra (discount instrument): TNA = ((100 / precio) ^ (365 / dias_al_vencimiento) - 1) * 100
 """
 import logging
-from datetime import date, datetime, timedelta
-from typing import Any, Optional
+import re
+from datetime import date, datetime
+from typing import Optional, List, Dict
 
-from services.iol_client import get_serie_historica, get_cotizacion
+from services.iol_client import get_cotizacion
+from services.rates_store import (
+    get_caucion_series,
+    get_letra_series,
+    upsert_caucion_point,
+    upsert_letra_point,
+)
 
 logger = logging.getLogger(__name__)
 
 # IOL symbol for Caución Bursátil Tomadora 1 día (pesos)
-CAUCION_1D_SYMBOL = "CAUCION_1D_TOMA_PESOS"
-
-# Fallback symbol variants IOL uses for cauciones
-CAUCION_SYMBOLS_FALLBACK = [
+# IOL does NOT expose a historical series for cauciones, so we use current price daily
+CAUCION_IOL_SYMBOLS = [
     "CAUCIONES",
     "CAUC1D",
+    "CAUCION_1D_TOMA_PESOS",
     "CAUCPESOS1D",
 ]
 
 
-def _tna_from_caucion_price(price: float, days: int = 1) -> Optional[float]:
+# ---------------------------------------------------------------------------
+# TNA helpers
+# ---------------------------------------------------------------------------
+
+def _tna_from_caucion_price(price: float) -> Optional[float]:
     """
-    Convert a caución closing price / rate to TNA%.
-    IOL returns caución prices in different ways depending on the endpoint:
-    - As a daily percentage rate (e.g. 0.12 means 0.12% per day)
-    - As an annualised rate already (e.g. 44.0 means 44% TNA)
-    We detect which by magnitude: if value < 5 it's a daily rate, otherwise it's already TNA.
+    Convert caución IOL price to TNA%.
+    IOL returns different formats:
+      - Daily % (e.g. 0.08 = 0.08%/day) → TNA = price * 365
+      - Already TNA (e.g. 29.0 = 29% annual) → use directly
+    Heuristic: if value < 5, treat as daily %; otherwise as TNA.
     """
     if price is None or price <= 0:
         return None
     if price < 5:
-        # Daily rate in percent → annualise
         return round(price * 365, 2)
-    # Already TNA
     return round(float(price), 2)
 
 
 def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date) -> Optional[float]:
     """
-    Compute TNA for a discount letra given its closing price and maturity date.
+    Compute TNA for a discount letra.
     TNA = ((100 / precio) ^ (365 / dias) - 1) * 100
     """
     dias = (vencimiento - fecha_cotizacion).days
     if dias <= 0 or precio is None or precio <= 0:
         return None
     try:
-        tna = ((100.0 / precio) ** (365.0 / dias) - 1) * 100
-        return round(tna, 2)
+        return round(((100.0 / precio) ** (365.0 / dias) - 1) * 100, 2)
     except Exception:
         return None
 
 
 def _parse_vencimiento(simbolo: str) -> Optional[date]:
     """
-    Attempt to parse the maturity date from the letra symbol.
-    Common formats used by BYMA/IOL:
-      S17A6  → 17-Apr-2026  (Sddmmy — day + 1-letter month + 1-digit year)
-      S30A6  → 30-Apr-2026
-      S29Y6  → 29-May-2026  (Y = May in BYMA convention)
-      S30J6  → 30-Jun-2026
-      X17A6  → 17-Apr-2026  (X prefix also used)
+    Parse maturity date from BYMA letra symbol.
+    Format: [Prefix][DD][MonthCode][YearDigit]
+    Examples: S17A6 → 17-Apr-2026, S29Y6 → 29-May-2026, S30J6 → 30-Jun-2026
+
     Month codes: F=Feb, H=Mar, A=Apr, Y=May, J=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec, G=Jan
     """
-    # Strip prefix letters until we hit digits
-    s = simbolo.upper().lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
     raw = simbolo.upper()
-
-    # Try BYMA short format: [letter][DD][MonthCode][Y]  e.g. S17A6
     byma_month = {
         'F': 2, 'H': 3, 'A': 4, 'Y': 5, 'J': 6,
         'N': 7, 'Q': 8, 'U': 9, 'V': 10, 'X': 11, 'Z': 12, 'G': 1,
     }
-    import re
+
+    # Standard BYMA format: S17A6, S30J6, S29Y6
     m = re.match(r'^[A-Z](\d{2})([FHAYNJQUVXZG])(\d)$', raw)
     if m:
         day = int(m.group(1))
         month = byma_month.get(m.group(2))
-        year_digit = int(m.group(3))
-        year = 2020 + year_digit
+        year = 2020 + int(m.group(3))
         if month:
             try:
                 return date(year, month, day)
             except ValueError:
                 pass
 
-    # Try longer format like S30JN25 or similar
+    # Extended format: S30JN25 (day + 2-letter month abbrev + 2-digit year)
     m2 = re.match(r'^[A-Z](\d{2})([A-Z]{2})(\d{2})$', raw)
     if m2:
-        month_abbr = m2.group(2).capitalize()
-        months = {
-            'En': 1, 'Fe': 2, 'Ma': 3, 'Ab': 4, 'My': 5, 'Jn': 6,
-            'Jl': 7, 'Ag': 8, 'Se': 9, 'Oc': 10, 'No': 11, 'Di': 12,
-            'Ja': 1, 'Ju': 6, 'Au': 8, 'Oc': 10,
+        abbr_map = {
+            'EN': 1, 'FE': 2, 'MA': 3, 'AB': 4, 'MY': 5, 'JN': 6,
+            'JL': 7, 'AG': 8, 'SE': 9, 'OC': 10, 'NO': 11, 'DI': 12,
         }
-        month = months.get(month_abbr)
+        month = abbr_map.get(m2.group(2).upper())
         if month:
             try:
                 return date(2000 + int(m2.group(3)), month, int(m2.group(1)))
             except ValueError:
                 pass
 
-    logger.warning(f"Could not parse maturity date from symbol '{simbolo}'")
+    logger.debug(f"Could not parse vencimiento from symbol '{simbolo}'")
     return None
 
 
-def _normalize_series(raw: list[dict], symbol: str, symbol_type: str, vencimiento: Optional[date]) -> list[dict]:
+# ---------------------------------------------------------------------------
+# Daily capture (called by scheduler at market close ~17:15 ART)
+# ---------------------------------------------------------------------------
+
+async def capture_daily_rates(letras_to_track: Optional[List[str]] = None):
     """
-    Convert a raw IOL historical series to a list of {date, tna} points.
-    symbol_type: 'caucion' | 'letra'
+    Capture today's caucion TNA and all tracked letras TNA from IOL.
+    Called daily by the scheduler after market close.
     """
-    result = []
-    for item in raw:
-        # IOL returns fecha as ISO datetime string
-        fecha_str = item.get("fechaHora") or item.get("fecha") or item.get("date") or ""
-        if not fecha_str:
-            continue
+    today = date.today()
+    errors = []
+
+    # 1. Capture caución current price
+    caucion_captured = False
+    for symbol in CAUCION_IOL_SYMBOLS:
         try:
-            fecha = datetime.fromisoformat(fecha_str[:10]).date()
-        except ValueError:
-            continue
-
-        # Price field: 'ultimo', 'cierre', 'close', 'precio'
-        price = (
-            item.get("ultimo")
-            or item.get("cierre")
-            or item.get("ultimoPrecio")
-            or item.get("close")
-        )
-        if price is None:
-            continue
-        try:
-            price = float(price)
-        except (TypeError, ValueError):
-            continue
-
-        if symbol_type == "caucion":
-            tna = _tna_from_caucion_price(price)
-        else:  # letra
-            if vencimiento is None:
-                continue
-            tna = _tna_from_letra(price, vencimiento, fecha)
-
-        if tna is not None and tna > 0:
-            result.append({"date": fecha.isoformat(), "tna": tna, "price": round(price, 4)})
-
-    return sorted(result, key=lambda x: x["date"])
-
-
-async def get_caucion_history(fecha_desde: str, fecha_hasta: str) -> list[dict]:
-    """
-    Fetch Caución Tomadora 1D TNA history from IOL.
-    Returns list of {date, tna, price}.
-    """
-    symbols_to_try = [CAUCION_1D_SYMBOL] + CAUCION_SYMBOLS_FALLBACK
-
-    for symbol in symbols_to_try:
-        try:
-            raw = await get_serie_historica(symbol, fecha_desde, fecha_hasta)
-            if raw:
-                data = _normalize_series(raw, symbol, "caucion", None)
-                if data:
-                    logger.info(f"Caución history fetched via symbol '{symbol}': {len(data)} points")
-                    return data
+            data = await get_cotizacion(symbol)
+            price = data.get("ultimoPrecio") or data.get("ultimo")
+            if price:
+                tna = _tna_from_caucion_price(float(price))
+                if tna:
+                    upsert_caucion_point(tna=tna, price=float(price), fecha=today)
+                    caucion_captured = True
+                    logger.info(f"Caucion daily capture: symbol={symbol}, price={price}, TNA={tna}%")
+                    break
         except Exception as e:
-            logger.debug(f"Symbol '{symbol}' failed: {e}")
+            logger.debug(f"Caucion symbol '{symbol}' failed: {e}")
 
-    logger.warning("Could not fetch caución history from any symbol variant")
-    return []
+    if not caucion_captured:
+        errors.append("caucion: no symbol returned data from IOL")
+        logger.warning("Could not capture caucion from IOL today — store retains last value")
+
+    # 2. Capture letras
+    from services.rates_store import list_tracked_letras
+    symbols = list(set((letras_to_track or []) + list_tracked_letras()))
+
+    for simbolo in symbols:
+        vencimiento = _parse_vencimiento(simbolo)
+        if vencimiento is None:
+            logger.warning(f"Skipping letra '{simbolo}': cannot parse vencimiento")
+            continue
+        if vencimiento <= today:
+            logger.info(f"Skipping letra '{simbolo}': already expired ({vencimiento})")
+            continue
+        try:
+            data = await get_cotizacion(simbolo)
+            price = data.get("ultimoPrecio") or data.get("ultimo")
+            if price:
+                tna = _tna_from_letra(float(price), vencimiento, today)
+                if tna:
+                    upsert_letra_point(simbolo=simbolo, tna=tna, price=float(price), fecha=today)
+                    logger.info(f"Letra {simbolo} daily capture: price={price}, TNA={tna}%")
+        except Exception as e:
+            errors.append(f"{simbolo}: {e}")
+            logger.warning(f"Failed to capture letra '{simbolo}': {e}")
+
+    return {"captured_at": today.isoformat(), "errors": errors}
 
 
-async def get_letra_history(simbolo: str, fecha_desde: str, fecha_hasta: str) -> list[dict]:
+# ---------------------------------------------------------------------------
+# Query functions (used by the API router)
+# ---------------------------------------------------------------------------
+
+async def get_caucion_history(fecha_desde: str, fecha_hasta: str) -> List[Dict]:
+    """Return caucion 1D TNA series from the persistent store."""
+    return get_caucion_series(fecha_desde, fecha_hasta)
+
+
+async def get_letra_history(simbolo: str, fecha_desde: str, fecha_hasta: str) -> List[Dict]:
     """
-    Fetch a Letra del Tesoro TNA history from IOL.
-    Returns list of {date, tna, price}.
+    Return letra TNA series from the store.
+    If the store has no data for this symbol yet, capture today's price on-demand.
     """
-    vencimiento = _parse_vencimiento(simbolo)
-    if vencimiento is None:
-        logger.warning(f"Could not determine vencimiento for '{simbolo}', TNA will be None")
-
-    try:
-        raw = await get_serie_historica(simbolo, fecha_desde, fecha_hasta)
-        if not raw:
-            return []
-        data = _normalize_series(raw, simbolo, "letra", vencimiento)
-        logger.info(f"Letra '{simbolo}' history: {len(data)} points, vto={vencimiento}")
-        return data
-    except Exception as e:
-        logger.warning(f"Failed to fetch letra '{simbolo}' history: {e}")
-        return []
+    data = get_letra_series(simbolo, fecha_desde, fecha_hasta)
+    if not data:
+        # On-demand capture: try to get at least today's price
+        vencimiento = _parse_vencimiento(simbolo)
+        if vencimiento and vencimiento > date.today():
+            try:
+                cotiz = await get_cotizacion(simbolo)
+                price = cotiz.get("ultimoPrecio") or cotiz.get("ultimo")
+                if price:
+                    tna = _tna_from_letra(float(price), vencimiento, date.today())
+                    if tna:
+                        upsert_letra_point(simbolo=simbolo, tna=tna, price=float(price))
+                        data = get_letra_series(simbolo, fecha_desde, fecha_hasta)
+                        logger.info(f"On-demand capture for {simbolo}: TNA={tna}%")
+            except Exception as e:
+                logger.warning(f"On-demand capture failed for '{simbolo}': {e}")
+    return data
 
 
 async def get_rates_comparison(
-    letras: list[str],
+    letras: List[str],
     fecha_desde: str,
     fecha_hasta: str,
-) -> dict:
+) -> Dict:
     """
-    Fetch and combine caución 1D TNA + multiple letras TNA into a unified response.
-
-    Returns:
-    {
-      "caucion_1d": [{"date": "2025-01-15", "tna": 44.5, "price": 0.122}, ...],
-      "letras": {
-        "S17A6": {"data": [...], "vencimiento": "2026-04-17", "error": null},
-        ...
-      },
-      "fecha_desde": "...",
-      "fecha_hasta": "..."
-    }
+    Combine caucion 1D TNA + multiple letras TNA from the persistent store.
     """
+    # Fetch all concurrently
     import asyncio
 
-    # Fetch caucion and all letras concurrently
     caucion_task = get_caucion_history(fecha_desde, fecha_hasta)
     letra_tasks = {s: get_letra_history(s, fecha_desde, fecha_hasta) for s in letras}
 
     caucion_data = await caucion_task
-    letra_results = {}
-    for simbolo, task in letra_tasks.items():
-        letra_results[simbolo] = await task
 
-    # Build response
     letras_response = {}
-    for simbolo, data in letra_results.items():
+    for simbolo, task in letra_tasks.items():
+        data = await task
         vencimiento = _parse_vencimiento(simbolo)
         letras_response[simbolo] = {
             "data": data,
             "vencimiento": vencimiento.isoformat() if vencimiento else None,
-            "error": None if data else "Sin datos o símbolo no encontrado en IOL",
+            "error": None if data else "Sin datos aún — se capturará en el próximo cierre de mercado",
         }
 
     return {

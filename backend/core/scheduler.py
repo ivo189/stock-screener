@@ -112,6 +112,20 @@ async def run_eod_reset():
     logger.info("EOD signal reset — new trading day started.")
 
 
+async def run_rates_capture():
+    """
+    Daily capture of caución 1D TNA + tracked letras TNA from IOL.
+    Runs at 17:15 ART (20:15 UTC) on weekdays, after market close (17:00 ART).
+    """
+    from services.rates_service import capture_daily_rates
+    logger.info("Daily rates capture starting...")
+    result = await capture_daily_rates()
+    if result.get("errors"):
+        logger.warning(f"Rates capture completed with errors: {result['errors']}")
+    else:
+        logger.info(f"Rates capture complete for {result.get('captured_at')}")
+
+
 def start_scheduler():
     """Configure and start the APScheduler."""
     # Daily stock universe refresh (after market close)
@@ -145,9 +159,19 @@ def start_scheduler():
         name="Reset EOD cash signal at market open",
     )
 
+    # Daily rates capture at 17:15 ART = 20:15 UTC (after BCBA market close)
+    scheduler.add_job(
+        run_rates_capture,
+        trigger=CronTrigger(hour=20, minute=15, day_of_week="mon-fri"),
+        id="daily_rates_capture",
+        replace_existing=True,
+        name="Daily caución + letras TNA capture (17:15 ART / 20:15 UTC)",
+    )
+
     scheduler.start()
     logger.info(
         "Scheduler started. "
         "Stock: 22:30 UTC weekdays. "
-        "Bonds: every 15 min during market hours (11:00-17:00 ART)."
+        "Bonds: every 15 min during market hours (11:00-17:00 ART). "
+        "Rates: 20:15 UTC weekdays."
     )

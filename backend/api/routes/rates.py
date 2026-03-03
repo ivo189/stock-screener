@@ -12,7 +12,8 @@ from typing import Optional, Dict, List
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from services.rates_service import get_rates_comparison, _parse_vencimiento
+from services.rates_service import get_rates_comparison, _parse_vencimiento, capture_daily_rates
+from services.rates_store import list_tracked_letras
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rates", tags=["rates"])
@@ -45,7 +46,7 @@ class RatesHistoryResponse(BaseModel):
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _default_dates() -> tuple[str, str]:
+def _default_dates() -> "tuple[str, str]":
     """Return (fecha_desde, fecha_hasta) defaulting to last 3 months."""
     today = date.today()
     desde = today - timedelta(days=90)
@@ -122,13 +123,32 @@ async def get_rates_history(
 
 @router.get("/letras/parse")
 async def parse_letra_symbol(simbolo: str = Query(..., description="Símbolo BYMA, ej: S17A6")):
-    """
-    Utility endpoint: parse the maturity date from a letra BYMA symbol.
-    Returns vencimiento ISO date or null if it could not be determined.
-    """
+    """Utility: parse maturity date from a letra BYMA symbol."""
     vencimiento = _parse_vencimiento(simbolo)
     return {
         "simbolo": simbolo,
         "vencimiento": vencimiento.isoformat() if vencimiento else None,
         "parsed": vencimiento is not None,
     }
+
+
+@router.post("/capture")
+async def trigger_rates_capture(
+    letras: List[str] = Query(default=[], description="Letras adicionales a capturar ahora"),
+):
+    """
+    Trigger an immediate capture of today's caución TNA and all tracked letras from IOL.
+    Normally runs automatically at 17:15 ART. Use this to force a capture on demand.
+    """
+    try:
+        result = await capture_daily_rates(letras_to_track=letras if letras else None)
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"Manual capture failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/letras/tracked")
+async def get_tracked_letras():
+    """Return list of letra symbols currently tracked in the persistent store."""
+    return {"letras": list_tracked_letras()}

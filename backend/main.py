@@ -53,7 +53,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(bond_monitor.refresh_all())
     logger.info("Bond monitor initialised; initial price fetch scheduled.")
 
-    # Start the daily scheduler (stocks + bonds)
+    # Initialise rates store (seeds caucion historical data if first run)
+    from services.rates_store import init_store as init_rates_store
+    init_rates_store()
+    logger.info("Rates store initialised.")
+
+    # Start the daily scheduler (stocks + bonds + rates)
     start_scheduler()
 
     yield
