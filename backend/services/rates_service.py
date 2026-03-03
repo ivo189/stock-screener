@@ -54,18 +54,64 @@ def _tna_from_caucion_price(price: float) -> Optional[float]:
     return round(float(price), 2)
 
 
-def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date) -> Optional[float]:
+def _tna_from_letra(precio: float, vencimiento: date, fecha_cotizacion: date,
+                    cierre_anterior: Optional[float] = None) -> Optional[float]:
     """
-    Compute TNA for a discount letra.
-    TNA = ((100 / precio) ^ (365 / dias) - 1) * 100
+    Compute TNA for a LECAP (Letra Capitalizable del Tesoro).
+
+    LECAPs are capitalising instruments — they accrue interest daily and at maturity
+    pay VN * (1 + tasa_emision/365)^plazo_total. Their market price already reflects
+    accrued capitalisation and is quoted > 100 as they approach maturity.
+
+    For a LECAP, the implied TNA is derived from the daily price change (rendimiento
+    incremental), annualised to 365 days. This is the standard market convention:
+
+      variacion_diaria = (precio_hoy / precio_ayer) - 1
+      TNA = variacion_diaria * 365 * 100
+
+    When we don't have yesterday's price (first capture), we fall back to estimating
+    TNA from the price relative to par (100) extrapolating at constant rate:
+      days_since_approx_par: estimated as 30 days back from the price exceeding 100
+      TNA = ((precio / 100) ^ (365 / dias_desde_emision) - 1) * 100
+    This is an approximation valid only for first-day captures.
     """
-    dias = (vencimiento - fecha_cotizacion).days
-    if dias <= 0 or precio is None or precio <= 0:
+    dias_al_vto = (vencimiento - fecha_cotizacion).days
+    if dias_al_vto <= 0 or precio is None or precio <= 0:
         return None
+
     try:
-        return round(((100.0 / precio) ** (365.0 / dias) - 1) * 100, 2)
+        # Primary: use daily price change if we have yesterday's close
+        if cierre_anterior and cierre_anterior > 0 and abs(precio - cierre_anterior) > 0.001:
+            variacion = (precio / cierre_anterior) - 1.0
+            tna = round(variacion * 365 * 100, 2)
+            # Sanity check: TNA should be between 0% and 200%
+            if 0 < tna < 200:
+                return tna
+
+        # Fallback: for first capture, estimate TNA from price vs par extrapolated
+        # Assume the letra was issued ~(total_days - dias_al_vto) days ago at 100
+        # We can approximate total life as current days_to_maturity + days_accrued
+        # where days_accrued is estimated from how far above 100 the price is.
+        if precio <= 100:
+            # Standard discount: TNA = ((100/precio)^(365/dias) - 1) * 100
+            return round(((100.0 / precio) ** (365.0 / dias_al_vto) - 1) * 100, 2)
+
+        # Price > 100 (LECAP over par): estimate TNA from price growth rate
+        # Assuming it started at 100 and has been growing at constant TNA:
+        # precio = 100 * (1 + TNA/365)^dias_accrued
+        # We don't know dias_accrued exactly — use a proxy: assume 30-day emission window
+        # and iterate to find TNA that gives current price at current point in lifecycle
+        # Simple: use the annualised growth from 100 to precio over estimated accrual period
+        # Accrual estimation: if price is ~106 and dias_al_vto ~45, total life ~180d typical
+        # → dias_accrued ≈ 180 - 45 = 135
+        dias_accrued_estimate = max(30, 180 - dias_al_vto)
+        tna_estimated = round(((precio / 100.0) ** (365.0 / dias_accrued_estimate) - 1) * 100, 2)
+        if 0 < tna_estimated < 200:
+            return tna_estimated
+
     except Exception:
-        return None
+        pass
+    return None
 
 
 def _parse_vencimiento(simbolo: str) -> Optional[date]:
@@ -159,11 +205,17 @@ async def capture_daily_rates(letras_to_track: Optional[List[str]] = None):
         try:
             data = await get_cotizacion(simbolo)
             price = data.get("ultimoPrecio") or data.get("ultimo")
+            cierre_anterior = data.get("cierreAnterior")
             if price:
-                tna = _tna_from_letra(float(price), vencimiento, today)
+                tna = _tna_from_letra(
+                    float(price), vencimiento, today,
+                    cierre_anterior=float(cierre_anterior) if cierre_anterior else None,
+                )
                 if tna:
                     upsert_letra_point(simbolo=simbolo, tna=tna, price=float(price), fecha=today)
-                    logger.info(f"Letra {simbolo} daily capture: price={price}, TNA={tna}%")
+                    logger.info(f"Letra {simbolo} daily capture: price={price}, cierre_ant={cierre_anterior}, TNA={tna}%")
+                else:
+                    logger.warning(f"Letra {simbolo}: could not compute TNA (price={price}, vto={vencimiento})")
         except Exception as e:
             errors.append(f"{simbolo}: {e}")
             logger.warning(f"Failed to capture letra '{simbolo}': {e}")
@@ -193,12 +245,18 @@ async def get_letra_history(simbolo: str, fecha_desde: str, fecha_hasta: str) ->
             try:
                 cotiz = await get_cotizacion(simbolo)
                 price = cotiz.get("ultimoPrecio") or cotiz.get("ultimo")
+                cierre_anterior = cotiz.get("cierreAnterior")
                 if price:
-                    tna = _tna_from_letra(float(price), vencimiento, date.today())
+                    tna = _tna_from_letra(
+                        float(price), vencimiento, date.today(),
+                        cierre_anterior=float(cierre_anterior) if cierre_anterior else None,
+                    )
                     if tna:
                         upsert_letra_point(simbolo=simbolo, tna=tna, price=float(price))
                         data = get_letra_series(simbolo, fecha_desde, fecha_hasta)
-                        logger.info(f"On-demand capture for {simbolo}: TNA={tna}%")
+                        logger.info(f"On-demand capture for {simbolo}: price={price}, TNA={tna}%")
+                    else:
+                        logger.warning(f"On-demand {simbolo}: TNA could not be computed (price={price})")
             except Exception as e:
                 logger.warning(f"On-demand capture failed for '{simbolo}': {e}")
     return data
