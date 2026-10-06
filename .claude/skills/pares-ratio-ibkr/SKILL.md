@@ -1,6 +1,6 @@
 ---
 name: pares-ratio-ibkr
-description: VARIANTE IBKR (sin TradingView). Trae los mejores pares (strike largo A / strike corto B) de call ratio spread 1x3 / 1x4 a crédito usando solo el conector de IBKR — universo = watchlist "Opcionables" u otra lista, filtro por cercanía al máximo 52s y volatilidad, cadenas reales y ranking. Usar cuando Ivo pida "los mejores pares con IBKR", "ratio con mi watchlist", o cuando TradingView falle (429). Si pide comparar fuentes, usar también pares-ratio-tv.
+description: VARIANTE IBKR (sin TradingView). Trae los mejores pares (strike largo A / strike corto B) de call ratio spread 1x3 / 1x4 a crédito usando solo el conector de IBKR — universo = la watchlist de IBKR que Ivo nombre al pedirlo (por defecto "Opcionables") u otra lista de tickers, filtro por cercanía al máximo 52s y volatilidad, cadenas reales y ranking. Usar cuando Ivo pida "los mejores pares con IBKR", "ratio con mi watchlist", "usá la watchlist X", o cuando TradingView falle (429). Si pide comparar fuentes, usar también pares-ratio-tv.
 ---
 
 # Mejores pares de call ratio spread (1xN a crédito) — variante IBKR
@@ -11,14 +11,14 @@ Hermano: `pares-ratio-tv` (universo por screener de TradingView). Esta variante 
 
 ## Parámetros (defaults; si Ivo pide otros, aplicarlos y decirlo en una línea)
 
-- Universo: watchlist `Opcionables` (id 106) de IBKR; o la lista de tickers que Ivo dé; o `get_account_positions`.
+- Universo: **la watchlist que Ivo nombre en el pedido** (ej. "con la watchlist General", "usá Favoritos"). Si no nombra ninguna, usar `Opcionables`, y decir en una línea cuál se usó. También acepta una lista de tickers escrita en el pedido, o las posiciones (`get_account_positions`).
 - Filtros: dist. al máx. 52s ≤ 8% (`high_52w` de `misc_statistics`), vol histórica 30d (`historical-vol.annual_pct`) ≥ 30%, `avg_90d_usd_volume` ≥ USD 300 M.
 - Vencimiento: DTE 20–45, de preferencia `trading_class` igual al ticker y sin prefijo numérico (`2AMD`). Si hay earnings antes de ese vencimiento, usar uno anterior al reporte (o excluir el ticker).
 - Ratios 3,4 · `--fill natural` · `--min-be-sigma 0.75` · `--min-oi 50` · top 10.
 
 ## Paso 1 — Universo y filtro (IBKR)
 
-1. `get_watchlists` → `get_watchlist(id)` devuelve `contract_id_ex` (para acciones es el `underlying_contract_id`). Para tickers fuera de la lista: `search_contracts(query)` y elegir la fila de `symbol` exacto, `country_code` US, con OPT en `sections` (la respuesta es enorme: leer solo esa fila).
+1. Resolver la watchlist **por nombre, nunca por id fijo** (los ids pueden cambiar): `get_watchlists`, comparar el nombre sin distinguir mayúsculas/acentos (exacto primero; si no hay, el que lo contenga). Si ningún nombre coincide, listar los disponibles y preguntar cuál. Si hay varias con el mismo nombre (p. ej. dos "Favorites"), leerlas todas, unir los tickers sin duplicar y decirlo. Luego `get_watchlist(id)` devuelve `contract_id_ex` (para acciones es el `underlying_contract_id`). Para tickers fuera de la lista: `search_contracts(query)` y elegir la fila de `symbol` exacto, `country_code` US, con OPT en `sections` (la respuesta es enorme: leer solo esa fila).
 2. Por cada ticker, en paralelo: `get_price_snapshot(contract_id, market_data_names=["last","bid_ask","misc_statistics","historical_vol","implied_vol_underlying","avg_90d_usd_volume"])`.
    Claves con guiones: `last.price`, `misc-statistics.high_52w`, `historical-vol.annual_pct` (decimal), `implied-vol-underlying.annual_iv` (decimal), `avg-90d-usd-volume.volume`.
 3. dist = last/high_52w − 1 (puede ser positiva si hizo máximo nuevo). Filtrar, y rankear por score = HV% − 3×|dist%|. Mostrar también la IV (si IV ≪ HV, el crédito va a ser flaco).
