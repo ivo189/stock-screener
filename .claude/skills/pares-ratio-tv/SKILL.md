@@ -1,9 +1,12 @@
 ---
-name: pares-ratio-calls
-description: Trae los mejores pares (strike largo A / strike corto B) de call ratio spread 1x3 / 1x4 a crédito, de punta a punta: screener de acciones cerca del máximo con volatilidad alta (TradingView) + cadenas reales de opciones (IBKR) + evaluador. Usar siempre que Ivo pida "los mejores pares", "qué ratio hago hoy", "armame el 1x3", "dame strikes", aunque no nombre el skill.
+name: pares-ratio-tv
+description: VARIANTE TRADINGVIEW. Trae los mejores pares (strike largo A / strike corto B) de call ratio spread 1x3 / 1x4 a crédito, de punta a punta: screener de acciones cerca del máximo con volatilidad alta (TradingView) + cadenas reales de opciones (IBKR) + evaluador. Usar siempre que Ivo pida "los mejores pares", "qué ratio hago hoy", "armame el 1x3", "dame strikes", aunque no nombre el skill. Si Ivo pide comparar fuentes, usar también pares-ratio-ibkr.
 ---
 
-# Mejores pares de call ratio spread (1xN a crédito)
+# Mejores pares de call ratio spread (1xN a crédito) — variante TradingView
+
+Universo: screener de TradingView (todo el mercado US, ATH real, earnings, valor operado). Cadenas: IBKR.
+Hermano: `pares-ratio-ibkr` (universo = watchlist/lista de IBKR, sin TradingView). Ventaja de esta variante: barre ~400 nombres y usa el máximo histórico real; desventaja: depende de TradingView, que hoy devolvió 429 en todas las pruebas (última prueba 2026-10-06, sin éxito en 7 intentos).
 
 Estrategia de Ivo: compro X calls en A, vendo Y > X calls en B > A, vencimiento corto, a **crédito neto**, con (Y−X) calls descubiertos.
 Criterio: máximo crédito + breakeven superior lo más lejos posible, sobre acciones cerca de un máximo y con volatilidad alta.
