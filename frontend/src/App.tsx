@@ -4,6 +4,7 @@ import Navbar from './components/layout/Navbar';
 import ScreenerPage from './pages/ScreenerPage';
 import BondMonitorPage from './pages/BondMonitorPage';
 import RatesPage from './pages/RatesPage';
+import OptionsPage from './pages/OptionsPage';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import client from './api/client';
 
@@ -26,7 +27,7 @@ function KeepAlive() {
   return null;
 }
 
-export type AppTab = 'screener' | 'bonds' | 'rates';
+export type AppTab = 'screener' | 'bonds' | 'rates' | 'options';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('screener');
@@ -41,6 +42,8 @@ export default function App() {
             <ScreenerPage />
           ) : activeTab === 'bonds' ? (
             <BondMonitorPage />
+          ) : activeTab === 'options' ? (
+            <OptionsPage />
           ) : (
             <RatesPage />
           )}

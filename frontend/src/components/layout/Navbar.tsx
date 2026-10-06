@@ -28,6 +28,7 @@ const TABS: { id: AppTab; label: string }[] = [
   { id: 'screener', label: 'Screener' },
   { id: 'bonds', label: 'Bonos AR' },
   { id: 'rates', label: 'Tasas ARS' },
+  { id: 'options', label: 'Opciones' },
 ];
 
 export default function Navbar({ activeTab, onTabChange }: Props) {
